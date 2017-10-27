@@ -38,7 +38,9 @@ def extrem_points(data_rank, R):
         Output:
             -Extreme data, X s.t max(X) > R
     """
-    return data_rank[np.nonzero(np.max(data_rank, axis=1) > R)[0], :]
+    ind_extr = np.nonzero(np.max(data_rank, axis=1) > R)[0]
+
+    return data_rank[ind_extr, :], ind_extr
 
 
 def above_thresh_binary(data_extr, R):

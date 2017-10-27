@@ -1,14 +1,17 @@
 import numpy as np
-import math
+import pickle
 from scipy import optimize
 import scipy.special as sp
+import scipy.stats as st
+import mystic.solvers as ms
 
 import gen_multivar_evd as gme
 import clef_algo as clf
 
-# import warnings
-# warnings.simplefilter('error')
+import pdb
 
+# import warnings
+# warnings.filterwarnings('error')
 
 #############
 # Functions #
@@ -54,10 +57,10 @@ def check_errors(charged_alphas, result_alphas, dim):
 
 def find_R(x_sim, eps):
     R = 0
-    n_exrt = len(clf.extrem_points(x_sim, R))
+    n_exrt = len(clf.extrem_points(x_sim, R)[0])
     while n_exrt > eps*len(x_sim):
-        R += 10
-        n_exrt = len(clf.extrem_points(x_sim, R))
+        R += 1
+        n_exrt = len(clf.extrem_points(x_sim, R)[0])
 
     return R
 
@@ -93,6 +96,23 @@ def check_dataset(dataset):
     return samples_nb
 
 
+def estimates_means_weights(X_extr, alphas, R, eps):
+    # X_damex = 1*(X_extr > eps * np.sum(X_extr, axis=1)[np.newaxis].T)
+    X_damex = 1*(X_extr > eps * R)
+    points_face = assign_face_to_points(X_damex, alphas)
+    W_proj = [(X_extr[np.nonzero(points_face == k)[0], :][:, alphas[k]].T /
+               np.sum(X_extr[np.nonzero(points_face == k)[0], :][:, alphas[k]],
+                      axis=1)).T
+              for k in range(K)]
+    means = np.zeros((K, dim))
+    for k in range(K):
+        means[k, alphas[k]] = np.mean(W_proj[k], axis=0)
+        weights = np.array([np.sum(points_face == k)/float(len(X_extr))
+                            for k in range(K)])
+
+    return means, weights
+
+
 def assign_face_to_points(X_damex, alphas):
     n, dim = np.shape(X_damex)
     K = len(alphas)
@@ -105,15 +125,24 @@ def assign_face_to_points(X_damex, alphas):
 
 
 def compute_betas(alphas, dim):
+    K = len(alphas)
+    mat_alphas = np.zeros((K, dim))
+    for k, alpha in enumerate(alphas):
+        mat_alphas[k, alpha] = 1
     betas = []
     for j in range(dim):
-        beta = []
-        for k, alpha in enumerate(alphas):
-            if j in alpha:
-                beta.append(k)
-        betas.append(beta)
+        betas.append(list(np.nonzero(mat_alphas[:, j])[0]))
 
     return betas
+
+
+def mat_alphas(alphas, dim):
+    K = len(alphas)
+    mat_alphas = np.zeros((K, dim))
+    for k, alpha in enumerate(alphas):
+        mat_alphas[k, alpha] = 1
+
+    return mat_alphas
 
 
 ##############
@@ -334,111 +363,263 @@ def alphas_complement(alphas, dim):
     return [list(set(range(dim)) - set(alpha)) for alpha in alphas]
 
 
-def likelihood_bis_2(Theta, X, gamma_z, alphas):
+###########
+# EM ineq #
+###########
+
+
+def feat_dict(rho_0):
+    K, dim = np.shape(rho_0)
+    f_dict = {j: {'fixed': None} for j in range(dim)}
+    for j in range(dim):
+        if np.sum(rho_0[:, j] > 0) == 1:
+            f_dict[j]['fixed'] = True
+            f_dict[j]['val'] = np.nonzero(rho_0[:, j])[0]
+        else:
+            f_dict[j]['vars'] = np.nonzero(rho_0[:, j])[0][:-1]
+            f_dict[j]['sum'] = np.nonzero(rho_0[:, j])[0][-1]
+
+    return f_dict
+
+
+def vars_ind_theta(rho_0):
+    K, dim = np.shape(rho_0)
+    f_dict = {}
+    ind_cpt = 0
+    for j in range(dim):
+        if np.sum(rho_0[:, j] > 0) > 1:
+            f_dict[j] = [ind_cpt,
+                         ind_cpt + len(np.nonzero(rho_0[:, j])[0][:-1])]
+            ind_cpt += len(np.nonzero(rho_0[:, j])[0][:-1])
+
+    return f_dict
+
+
+def rho_nu_to_theta_ineq(rho_0, nu):
+    K, dim = np.shape(rho_0)
+    theta = []
+    f_dict = feat_dict(rho_0)
+    for j in range(dim):
+        if not f_dict[j]['fixed']:
+            for ind in f_dict[j]['vars']:
+                theta.append(rho_0[ind, j])
+
+    return np.concatenate((np.array(theta), nu))
+
+
+def theta_to_rho_nu_ineq(theta, rho_0):
+    K, dim = np.shape(rho_0)
+    nu = theta[-K:]
+    f_dict = feat_dict(rho_0)
+    new_rho = np.zeros((K, dim))
+    ind_cpt = 0
+    for j in range(dim):
+        if not f_dict[j]['fixed']:
+            for ind in f_dict[j]['vars']:
+                new_rho[ind, j] = theta[ind_cpt]
+                ind_cpt += 1
+            new_rho[f_dict[j]['sum'], j] = 1./dim - np.sum(new_rho[:, j])
+        else:
+            new_rho[f_dict[j]['val'], j] = 1./dim
+
+    return new_rho, nu
+
+
+def likelihood_ineq(theta, rho_0, X, gamma_z, alphas):
     N, dim = np.shape(X)
-    Rho, Nu = theta_to_rho_nu_bis_2(Theta, alphas)
+    rho, nu = theta_to_rho_nu_ineq(theta, rho_0)
     lhood = 0.
     for k, alpha in enumerate(alphas):
-        Rho_k = np.zeros(len(alpha))
-        Rho_k[:-1] = Rho[k]
-        Rho_k[-1] = np.sum(Rho[k])
+        rho_k = rho[k, alpha]
         W = proj_X_on_simplex_alpha(X, alpha)
-        lhood_k_1 = np.dot(Nu[k] * Rho_k / np.sum(Rho_k) - 1,
+        lhood_k_1 = np.dot(nu[k] * rho_k / np.sum(rho_k) - 1,
                            np.dot(gamma_z[:, k], np.log(W)))
-        lhood_k_2 = (np.log(np.sum(Rho_k)) + np.log(sp.gamma(Nu[k])) -
-                     np.sum(np.log(sp.gamma(Nu[k] * Rho_k / np.sum(Rho_k)))))
+        lhood_k_2 = (np.log(np.sum(rho_k)) + np.log(sp.gamma(nu[k])) -
+                     np.sum(np.log(sp.gamma(nu[k] * rho_k / np.sum(rho_k)))))
         lhood += lhood_k_1 + np.sum(gamma_z[:, k]) * lhood_k_2
 
     return -lhood
 
 
-def theta_to_rho_nu_bis_2(Theta, alphas):
+def jacobian_ineq(theta, rho_0, X, gamma_z, alphas):
     K = len(alphas)
-    Rho = []
-    inds = inds_alphas(alphas)
-    for k in range(K):
-        Rho.append(Theta[inds[k]:inds[k+1]-1])
-    Nu = Theta[-K:]
-
-    return Rho, Nu
-
-
-def theta_init_bis_2(means, weights, alphas, nu):
-    K = len(alphas)
-    theta_0 = np.zeros(sum(map(len, alphas)))
-    inds = inds_alphas(alphas)
+    N, dim = np.shape(X)
+    rho, nu = theta_to_rho_nu_ineq(theta, rho_0)
+    jac_nu = np.zeros(K)
+    jac_rho = np.zeros((K, dim))
     for k, alpha in enumerate(alphas):
-        theta_0[inds[k]:inds[k+1]-1] = weights[k] * means[k, alpha[:-1]]
-    theta_0[-K:] = nu*np.ones(K)
+        W = proj_X_on_simplex_alpha(X, alpha)
+        rho_k = rho[k, alpha]
+        jnu_1 = (sp.digamma(nu[k]) -
+                 np.dot(rho_k, sp.digamma(nu[k] * rho_k / np.sum(rho_k))) /
+                 np.sum(rho_k))
+        jnu_2 = (np.dot(rho_k, np.dot(gamma_z[:, k], np.log(W))) /
+                 np.sum(rho_k))
+        jac_nu[k] = np.sum(gamma_z[:, k]) * jnu_1 + jnu_2
+        jrho_1 = (rho_k / np.sum(rho_k) - nu[k] * (np.sum(rho_k) - rho_k) /
+                  np.sum(rho_k)**2 * sp.digamma(nu[k] * rho_k /
+                                                np.sum(rho_k)))
+        jrho_2 = (nu[k] * (np.sum(rho_k) - rho_k) / np.sum(rho_k)**2 *
+                  np.dot(gamma_z[:, k], np.log(W)))
+        jac_rho[k, alpha] = np.sum(gamma_z[:, k]) * jrho_1 + jrho_2
+    jac_rho_vars = []
+    f_dict = feat_dict(rho_0)
+    for j in range(dim):
+        if not f_dict[j]['fixed']:
+            for ind in f_dict[j]['vars']:
+                jac_rho_vars.append(jac_rho[ind, j])
 
-    return theta_0
+    return -np.concatenate((np.array(jac_rho_vars), jac_nu))
+
+
+def make_fun_constraint(inds):
+    return lambda theta: 1./dim - np.sum([theta[k]
+                                          for k in range(inds[0], inds[1])])
+
+
+def dirichlet_mixture(means, weights, nu, lbda_exp, alphas, dim, n_sample):
+    alpha_c = alphas_complement(alphas, dim)
+    X = np.zeros((n_sample, dim))
+    x_par = 1 + np.random.pareto(1, n_sample)
+    y_label = np.zeros(n_sample)
+    for i in xrange(n_sample):
+        k = int(np.nonzero(np.random.multinomial(1, p))[0])
+        y_label[i] = k
+        X[i, alpha_c[k]] = np.random.exponential(lbda, len(alpha_c[k]))
+        X[i, alphas[k]] = x_par[i] * np.random.dirichlet(nu*mu[k, alphas[k]])
+
+    return X, y_label
 
 
 ########
 # Main #
 ########
 
+n_sample = int(2e5)
 
 # Gen alphas
-dim = 50
-nb_faces = 30
-max_size = 8
+dim = 20
+nb_faces = 10
+max_size = 6
 p_geom = 0.3
 alphas = gme.gen_random_alphas(dim, nb_faces, max_size, p_geom)
-missing_feats = list(set(range(dim)) - set([j for alpha in alphas
-                                            for j in alpha]))
-if len(missing_feats) > 1:
-    alphas.append(missing_feats)
-if len(missing_feats) == 1:
-    missing_feats.append(list(set(range(dim)) - set(missing_feats))[0])
-    alphas.append(missing_feats)
-# alphas = [[0, 1, 2, 3], [3, 4]]
-# dim = 5
-
-# Gen logistic
-n_sample = int(1e5)
-as_dep = 0.1
-X_raw = gme.asymmetric_logistic(dim, alphas, n_sample, as_dep)
-X_pareto = transform_to_pareto(X_raw)
-
-# Find extremes clusters with damex
+alphas_file = open('alphas_file.p', 'wb')
+pickle.dump(alphas, alphas_file)
+alphas_file.close()
+# alphas_file = open('alphas_file.p', 'r')
+# alphas = pickle.load(alphas_file)
+# alphas_file.close()
 K = len(alphas)
-R = find_R(X_pareto, eps=0.1)
-eps = 0.1
-# alphas_damex = damex_algo(X_raw, R, eps)
-X_extr = clf.extrem_points(X_pareto, R)
-X_damex = 1*(X_extr > eps * np.max(X_extr, axis=1)[np.newaxis].T)
-# mass = check_dataset(X_damex)
-# alphas_damex = [list(np.nonzero(X_damex[mass.keys()[i], :])[0])
-#                 for i in np.argsort(mass.values())[::-1]]
-# alphas_res = alphas_damex[:K]
-# nb_feat = len(set([j for alpha in alphas_res for j in alpha]))
-alphas_res = alphas
 
-# Estimate means and weights
-n_extr = len(X_extr)
-points_face = assign_face_to_points(X_damex, alphas_res)
-W_proj = [(X_extr[np.nonzero(points_face == k)[0], :][:, alphas_res[k]].T /
-           np.sum(X_extr[np.nonzero(points_face == k)[0], :][:, alphas_res[k]],
-                  axis=1)).T
-          for k in range(K)]
-means = np.zeros((K, dim))
-for k in range(K):
-    means[k, alphas_res[k]] = np.mean(W_proj[k], axis=0)
-weights = np.array([np.sum(points_face == k)/float(n_extr)
-                    for k in range(K)])
-mom_constr = np.dot(means.T, weights)
-err_2 = np.sqrt(np.sum((mom_constr - np.ones(dim)/dim)[mom_constr > 0]**2))
-print 'error', err_2
+# Gen dirichlet
+mu, p = random_means_and_weights(alphas, K, dim)
+nu = 10.
+lbda = 0.2
+X_dir, y_label = dirichlet_mixture(mu, p, nu, lbda, alphas, dim, n_sample)
 
-# New means and weights
-n_means, n_weights = compute_new_means_and_weights(means, weights, dim)
-n_rhos = (n_means.T * n_weights).T
-n_mom_constr = np.dot(n_means.T, n_weights)
-n_err_2 = np.sqrt(np.sum((n_mom_constr - np.ones(dim)/dim)**2))
-diff_means = np.sqrt(np.max((n_means - means)**2))
-diff_weights = np.sqrt(np.max((n_weights - weights)**2))
-print 'new_err', n_err_2, diff_means, diff_weights
+# # Gen logistic
+# as_dep = 0.1
+# X_raw = gme.asymmetric_logistic(dim, alphas, n_sample, as_dep)
+
+# Extreme data
+X_pareto = X_dir  # transform_to_pareto(X_raw)
+R = find_R(X_pareto, eps=0.01)
+X_extr, ind_extr = clf.extrem_points(X_pareto, R)
+extr_file = open('extr_file.p', 'wb')
+pickle.dump(X_extr, extr_file)
+extr_file.close()
+# # extr_file = open('extr_file.p', 'r')
+# # X_extr = pickle.load(extr_file)
+# # extr_file.close()
+
+# Estimates means and weights
+means_emp, weights_emp = estimates_means_weights(X_extr, alphas, R, eps=0.1)
+# means_lab = np.zeros((K, dim))
+# for k, alpha in enumerate(alphas):
+#     ind_k = np.nonzero(y_label[ind_extr] == k)[0]
+#     means_lab[k, alpha] = np.mean((X_extr[ind_k, :][:, alpha].T /
+#                                    np.sum(X_extr[ind_k, :][:, alpha],
+#                                           axis=1)).T,
+#                                   axis=0)
+# weights_lab = np.array([len(np.nonzero(y_label[ind_extr] == k)[0])
+#                         for k in range(K)]) / float(len(ind_extr))
+
+# # New means and weights
+# means_0, weights_0 = compute_new_means_and_weights(means_emp,
+#                                                    weights_emp, dim)
+
+# # M-step without constraint
+# nu_0 = 10*np.ones(K)
+# Sigma0 = sigma_init(means_emp, nu_0, alphas)
+# gamma_z = compute_gamma_z(X_extr, alphas, means_emp, nu_0, weights_emp)
+# weights_1 = np.mean(gamma_z, axis=0)
+# bds = [(0, None) for i in range(len(Sigma0))]
+# res_0 = optimize.minimize(likelihood_bis,
+#                           Sigma0,
+#                           args=(X_extr, gamma_z, alphas),
+#                           jac=jacobian_bis,
+#                           bounds=bds)
+# means_1, nu_1 = sigma_to_means_nus(res_0.x, alphas, dim)
+# means_lhd, weights_lhd = compute_new_means_and_weights(means_1,
+#                                                        weights_1,
+#                                                        dim)
+
+# M-step ineq
+nu_2 = 10*np.ones(K)
+rho_0 = (means_emp.T * weights_emp).T
+gamma_z = compute_gamma_z(X_extr, alphas, means_emp, nu_2, weights_emp)
+theta_0 = rho_nu_to_theta_ineq(rho_0, nu_2)
+inds_theta = vars_ind_theta(rho_0)
+cons = [{'type': 'ineq',
+         'fun': make_fun_constraint(inds_theta[j])} for j in inds_theta.keys()]
+bds_r = [(0, 1./dim) for i in range(len(theta_0[:-K]))]
+bds_n = [(0, None) for i in range(K)]
+bds = bds_r + bds_n
+print 'minimization'
+# res = optimize.minimize(likelihood_ineq,
+#                         theta_0,
+#                         args=(rho_0, X_extr, gamma_z, alphas),
+#                         jac=jacobian_ineq,
+#                         bounds=bds,
+#                         constraints=cons,
+#                         options={'eps': 1e-12, 'ftol': 1e-6})
+# rho_res, nu_res = theta_to_rho_nu_ineq(res.x, rho_0)
+# weights_res = np.sum(rho_res, axis=1)
+# means_res = (rho_res.T / weights_res).T
+
+# M-step mystic
+theta_ms = ms.diffev2(likelihood_ineq, theta_0,
+                      args=(rho_0, X_extr, gamma_z, alphas),
+                      bounds=bds)
+rho_ms, nu_ms = theta_to_rho_nu_ineq(theta_ms, rho_0)
+weights_ms = np.sum(rho_ms, axis=1)
+means_ms = (rho_ms.T / weights_ms).T
+print 'err means emp', np.sum((mu - means_emp)**2)
+print 'err weights emp', np.sum((p - weights_emp)**2)
+print 'err means lhd constraint', np.sum((mu - means_ms)**2)
+print 'err weights lhd constraint', np.sum((p - weights_ms)**2)
+# # M-step eq
+# Theta0 = theta_init(n_means, n_weights, alphas, nu=2.)
+# # Theta0 = np.array([0.1, 0.2, 0.3, 0.3, 0.2, 6.])
+# Nu0 = 2*np.ones(K)
+# inds = inds_alphas(alphas)
+# betas = compute_betas(alphas, dim)
+# gamma_z = compute_gamma_z(X_extr, alphas, n_means, Nu0, n_weights)
+# cons = [{'type': 'eq',
+#          'fun':
+#          lambda Theta: (np.sum([Theta[inds[k] + alphas[k].index(j)]
+#                                 for k in beta]) - 1./dim)}
+#         for j, beta in enumerate(betas)]
+# cons_test = [{'type': 'eq',
+#               'fun':
+#               lambda Theta: np.sum(Theta[:-K]) - 1.}]
+# bds = [(0, None) for i in range(len(Theta0))]
+# res = optimize.minimize(likelihood,
+#                         Theta0,
+#                         args=(X_extr, gamma_z, alphas),
+#                         bounds=bds,
+#                         jac=jacobian,
+#                         constraints=cons)
 
 # # Random try likelihood
 # Nu0 = 2*np.ones(K)
@@ -463,66 +644,3 @@ print 'new_err', n_err_2, diff_means, diff_weights
 #     rand_lhood = likelihood(rand_theta, X_extr, gamma_z, alphas_res)
 #     print cpt, rand_lhood
 #     cpt += 1
-
-# # M-step 1
-# Theta0 = theta_init(n_means, n_weights, alphas_res, nu=2.)
-# # Theta0 = np.array([0.1, 0.2, 0.3, 0.3, 0.2, 6.])
-# Nu0 = 2*np.ones(K)
-# inds = inds_alphas(alphas_res)
-# betas = compute_betas(alphas_res, dim)
-# gamma_z = compute_gamma_z(X_extr, alphas_res, n_means, Nu0, n_weights)
-# cons = [{'type': 'eq',
-#          'fun':
-#          lambda Theta: (np.sum([Theta[inds[k] + alphas_res[k].index(j)]
-#                                 for k in beta]) - 1./dim)}
-#         for j, beta in enumerate(betas)]
-# cons_test = [{'type': 'eq',
-#               'fun':
-#               lambda Theta: np.sum(Theta[:-K]) - 1.}]
-# bds = [(0, None) for i in range(len(Theta0))]
-# res = optimize.minimize(likelihood,
-#                         Theta0,
-#                         args=(X_extr, gamma_z, alphas_res),
-#                         # method='SLSQP',
-#                         bounds=bds,
-#                         jac=jacobian,
-#                         constraints=cons)
-
-# M-step bis
-Nu0 = 2*np.ones(K)
-Sigma0 = sigma_init(n_means, Nu0, alphas_res)
-gamma_z = compute_gamma_z(X_extr, alphas_res, n_means, Nu0, n_weights)
-weights_lhood = np.mean(gamma_z, axis=0)
-bds = [(0, None) for i in range(len(Sigma0))]
-res = optimize.minimize(likelihood_bis,
-                        Sigma0,
-                        args=(X_extr, gamma_z, alphas_res),
-                        jac=jacobian_bis,
-                        bounds=bds)
-means_lhood, nus_lhood = sigma_to_means_nus(res.x, alphas_res, dim)
-mom_constr_lhood = np.dot(means_lhood.T, weights_lhood)
-err_lhood = np.sqrt(np.sum((mom_constr_lhood - np.ones(dim)/dim)**2))
-n_means_lhd, n_weights_lhd = compute_new_means_and_weights(means_lhood,
-                                                           weights_lhood,
-                                                           dim)
-n_err_lhood = np.sqrt(np.sum((np.dot(n_means_lhd.T, n_weights_lhd) -
-                              np.ones(dim)/dim)**2))
-print err_lhood, n_err_lhood
-
-# # M-step bis 2
-# Nu0 = 2*np.ones(K)
-# Theta0 = theta_init_bis_2(n_means, n_weights, alphas_res, Nu0)
-# inds = inds_alphas(alphas_res)
-# betas = compute_betas(alphas_res, dim)
-# gamma_z = compute_gamma_z(X_extr, alphas_res, n_means, Nu0, n_weights)
-# cons = [{'type': 'ineq',
-#          'fun':
-#          lambda Theta: (np.sum([Theta[inds[k] + alphas_res[k].index(j)]
-#                                 for k in beta[:-1]]) - 1./dim)}
-#         for j, beta in enumerate(betas)]
-# bds = [(0, None) for i in range(len(Theta0))]
-# res = optimize.minimize(likelihood_bis_2,
-#                         Theta0,
-#                         args=(X_extr, gamma_z, alphas_res),
-#                         bounds=bds,
-#                         constraints=cons)

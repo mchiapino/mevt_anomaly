@@ -30,6 +30,13 @@ def gen_random_alphas(dim, nb_faces, max_size, p_geom, max_loops=1e4):
             k += 1
         l += 1
     alphas = [list(np.nonzero(f)[0]) for f in faces]
+    missing_feats = list(set(range(dim)) - set([j for alph in alphas
+                                                for j in alph]))
+    if len(missing_feats) > 1:
+        alphas.append(missing_feats)
+    if len(missing_feats) == 1:
+        missing_feats.append(list(set(range(dim)) - set(missing_feats))[0])
+        alphas.append(missing_feats)
 
     return alphas
 
