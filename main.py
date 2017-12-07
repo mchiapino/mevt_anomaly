@@ -4,6 +4,7 @@ from scipy import optimize
 import scipy.special as sp
 import scipy.stats as st
 import mystic.solvers as ms
+import time
 
 import gen_multivar_evd as gme
 import clef_algo as clf
@@ -66,7 +67,7 @@ def find_R(x_sim, eps):
 
 
 def damex_algo(X_data, R, eps):
-    X_extr = clf.extrem_points(X_data, R)
+    X_extr, ind_extr = clf.extrem_points(X_data, R)
     X_damex = 1*(X_extr > eps * np.max(X_extr, axis=1)[np.newaxis].T)
     mass = check_dataset(X_damex)
     alphas_damex = [list(np.nonzero(X_damex[mass.keys()[i], :])[0])
@@ -190,13 +191,28 @@ def gaussian_means_and_weights(rho, alphas, K, dim):
     return means, weights
 
 
+def dirichlet_means_and_weights(rho_emp, nu, alphas, K, dim):
+    betas = compute_betas(alphas, dim)
+    rho = np.zeros((K, dim))
+    for j, beta in enumerate(betas):
+        if len(beta) == 1:
+            rho[beta, j] = 1./dim
+        else:
+            rho[beta, j] = np.random.dirichlet(nu*rho_emp[beta, j])
+            rho[beta, j] /= dim * np.sum(rho[beta, j])
+    weights = np.sum(rho, axis=1)
+    means = (rho.T / weights).T
+
+    return means, weights
+
+
 ###########
 # EM Algo #
 ###########
 
 
-def exp_distrib(x, lbda=0.2):
-    return lbda * np.exp(-lbda * x)
+def exp_distrib(x, lbda=1.):
+    return lbda * np.exp(-lbda * (x - 1))
 
 
 def dirichlet(w, mean, nu):
@@ -214,17 +230,6 @@ def inds_alphas(alphas):
         inds[k+1] = inds[k] + len(alphas[k])
 
     return inds
-
-
-def theta_to_rho_nu(Theta, alphas):
-    K = len(alphas)
-    Rho = []
-    inds = inds_alphas(alphas)
-    for k in range(K):
-        Rho.append(Theta[inds[k]:inds[k+1]])
-    Nu = Theta[inds[-1]:]
-
-    return Rho, Nu
 
 
 def theta_to_means_weights(Theta, alphas, dim):
@@ -251,27 +256,71 @@ def sigma_to_means_nus(Sigma, alphas, dim):
     return means, nus
 
 
-def theta_init(means, weights, alphas, nu):
-    K = len(alphas)
-    theta_0 = np.zeros(sum(map(len, alphas)) + K)
-    inds = inds_alphas(alphas)
-    for k, alpha in enumerate(alphas):
-        theta_0[inds[k]:inds[k+1]] = weights[k] * means[k, alpha]
-    theta_0[inds[-1]:] = nu*np.ones(K)
+def rho_nu_to_theta(rho, nu):
+    K, dim = np.shape(rho)
+    theta = []
+    for j in range(dim):
+        ind_j = np.nonzero(rho[:, j])[0]
+        if len(ind_j) > 1:
+            for k in ind_j:
+                theta.append(rho[k, j])
 
-    return theta_0
+    return np.concatenate((np.array(theta), nu))
 
 
-def likelihood(Theta, X, gamma_z, alphas):
+def theta_to_rho_nu(theta, rho_0):
+    K, dim = np.shape(rho_0)
+    rho = np.zeros((K, dim))
+    cpt = 0
+    for j in range(dim):
+        ind_j = np.nonzero(rho_0[:, j])[0]
+        if len(ind_j) == 1:
+            rho[ind_j, j] = 1./dim
+        else:
+            for i in ind_j:
+                rho[i, j] = theta[cpt]
+                cpt += 1
+    nu = theta[cpt:]
+
+    return rho, nu
+
+
+def compute_gamma_z(X, alphas, theta, rho_0, eps):
+    rho, nus = theta_to_rho_nu(theta, rho_0)
     N, dim = np.shape(X)
-    Rho, Nu = theta_to_rho_nu(Theta, alphas)
+    K = len(alphas)
+    gamma_z = np.zeros((N, K))
+    alphas_c = alphas_complement(alphas, dim)
+    weights = np.sum(rho, axis=1)
+    means = (rho.T / weights).T
+    for n in range(N):
+        for k, alpha in enumerate(alphas):
+            r = np.sum(X[n, alpha])
+            w = X[n, alpha] / r
+            eps = X[n, alphas_c[k]]
+            gamma_z[n, k] = (weights[k] *
+                             dirichlet(w, means[k, alpha], nus[k]) *
+                             np.prod(exp_distrib(eps)) * r**-2)
+        if np.sum(gamma_z[n]) == 0:
+            ind_max = np.argmax(gamma_z[n])
+            gamma_z[n] = 0.
+            gamma_z[n, ind_max] = 1.
+        gamma_z[n] /= np.sum(gamma_z[n])
+
+    return gamma_z
+
+
+def likelihood(theta, rho_0, X, gamma_z, alphas):
+    N, dim = np.shape(X)
+    rho, nu = theta_to_rho_nu(theta, rho_0)
     lhood = 0.
     for k, alpha in enumerate(alphas):
         W = proj_X_on_simplex_alpha(X, alpha)
-        lhood_k_1 = np.dot(Nu[k] * Rho[k] / np.sum(Rho[k]) - 1,
+        lhood_k_1 = np.dot(nu[k] * rho[k, alpha] / np.sum(rho[k, alpha]) - 1,
                            np.dot(gamma_z[:, k], np.log(W)))
-        lhood_k_2 = (np.log(np.sum(Rho[k])) + np.log(sp.gamma(Nu[k])) -
-                     np.sum(np.log(sp.gamma(Nu[k] * Rho[k] / np.sum(Rho[k])))))
+        lhood_k_2 = (np.log(np.sum(rho[k])) + np.log(sp.gamma(nu[k])) -
+                     np.sum(np.log(sp.gamma(nu[k] * rho[k, alpha] /
+                                            np.sum(rho[k, alpha])))))
         lhood += lhood_k_1 + np.sum(gamma_z[:, k]) * lhood_k_2
 
     return -lhood
@@ -337,11 +386,14 @@ def jacobian(Theta, X, gamma_z, alphas):
     return -jac
 
 
-def compute_gamma_z(X, alphas, means, nus, weights):
+def compute_gamma_z_ineq(X, alphas, theta, rho_0):
+    rho, nus = theta_to_rho_nu_ineq(theta, rho_0)
     N, dim = np.shape(X)
     K = len(alphas)
     gamma_z = np.zeros((N, K))
     alphas_c = alphas_complement(alphas, dim)
+    weights = np.sum(rho, axis=1)
+    means = (rho.T / weights).T
     for n in range(N):
         for k, alpha in enumerate(alphas):
             r = np.sum(X[n, alpha])
@@ -355,6 +407,17 @@ def compute_gamma_z(X, alphas, means, nus, weights):
             gamma_z[n] = 0.
             gamma_z[n, ind_max] = 1.
         gamma_z[n] /= np.sum(gamma_z[n])
+
+    return gamma_z
+
+
+def compute_gamma_z_x(x, alpha, mean, p, nu, dim):
+    alpha_c = list(set(range(dim)) - set(alpha))
+    r = np.sum(x[alpha])
+    w = x[alpha] / r
+    eps = x[alpha_c]
+    gamma_z = (p * dirichlet(w, mean[alpha], nu) *
+               np.prod(exp_distrib(eps)) * r**-2)
 
     return gamma_z
 
@@ -477,7 +540,7 @@ def make_fun_constraint(inds):
                                           for k in range(inds[0], inds[1])])
 
 
-def dirichlet_mixture(means, weights, nu, lbda_exp, alphas, dim, n_sample):
+def dirichlet_mixture(mu, p, nu, lbda, alphas, dim, n_sample):
     alpha_c = alphas_complement(alphas, dim)
     X = np.zeros((n_sample, dim))
     x_par = 1 + np.random.pareto(1, n_sample)
@@ -491,49 +554,193 @@ def dirichlet_mixture(means, weights, nu, lbda_exp, alphas, dim, n_sample):
     return X, y_label
 
 
+def theta_constraint(theta):
+    K, dim = np.shape(rho_0)
+    rho, nu = theta_to_rho_nu(theta, rho_0)
+    new_rho = rho / (dim * np.sum(rho, axis=0))
+    new_theta = rho_nu_to_theta(new_rho, nu)
+
+    return new_theta
+
 ########
 # Main #
 ########
 
-n_sample = int(2e5)
+# n_sample = int(3e5)
 
-# Gen alphas
-dim = 20
-nb_faces = 10
-max_size = 6
-p_geom = 0.3
-alphas = gme.gen_random_alphas(dim, nb_faces, max_size, p_geom)
-alphas_file = open('alphas_file.p', 'wb')
-pickle.dump(alphas, alphas_file)
-alphas_file.close()
-# alphas_file = open('alphas_file.p', 'r')
-# alphas = pickle.load(alphas_file)
+# # Gen alphas
+# dim = 40
+# nb_faces = 20
+# max_size = 6
+# p_geom = 0.3
+# alphas = gme.gen_random_alphas(dim, nb_faces, max_size, p_geom)
+# alphas_file = open('alphas_file.p', 'wb')
+# pickle.dump(alphas, alphas_file)
 # alphas_file.close()
-K = len(alphas)
+# # alphas_file = open('alphas_file.p', 'r')
+# # alphas = pickle.load(alphas_file)
+# # alphas_file.close()
+# K = len(alphas)
 
-# Gen dirichlet
-mu, p = random_means_and_weights(alphas, K, dim)
-nu = 10.
-lbda = 0.2
-X_dir, y_label = dirichlet_mixture(mu, p, nu, lbda, alphas, dim, n_sample)
+# # Gen dirichlet
+# mu, p = random_means_and_weights(alphas, K, dim)
+# rho_true = (mu.T * p).T
+# nu_true = 10.
+# theta_true = rho_nu_to_theta_ineq(rho_true, nu_true*np.ones(K))
+# lbda = 0.2
+# X_dir, y_label = dirichlet_mixture(mu, p, nu_true, lbda, alphas, dim, n_sample)
 
-# # Gen logistic
-# as_dep = 0.1
-# X_raw = gme.asymmetric_logistic(dim, alphas, n_sample, as_dep)
+# # # Gen logistic
+# # as_dep = 0.1
+# # X_raw = gme.asymmetric_logistic(dim, alphas, n_sample, as_dep)
 
-# Extreme data
-X_pareto = X_dir  # transform_to_pareto(X_raw)
-R = find_R(X_pareto, eps=0.01)
-X_extr, ind_extr = clf.extrem_points(X_pareto, R)
-extr_file = open('extr_file.p', 'wb')
-pickle.dump(X_extr, extr_file)
-extr_file.close()
+# # Extreme data
+# # X_pareto = transform_to_pareto(X_raw)
+# X_pareto = clf.rank_transformation(X_dir)
+# R = find_R(X_pareto, eps=0.01)
+# X_extr, ind_extr = clf.extrem_points(X_pareto, R)
+# extr_file = open('extr_file.p', 'wb')
+# pickle.dump(X_extr, extr_file)
+# extr_file.close()
 # # extr_file = open('extr_file.p', 'r')
-# # X_extr = pickle.load(extr_file)
+# # X_extr = pickle.load(extr_file)[:2000]
 # # extr_file.close()
 
-# Estimates means and weights
+# Real data
+R = 743
+alphas_file = open('alphas_rdata.p', 'r')
+alphas = pickle.load(alphas_file)
+alphas_file.close()
+feats = set(alphas[0])
+K = len(alphas)
+for k in range(1, K):
+    feats = feats | set(alphas[k])
+feats = list(feats)
+extr_file = open('extr_rdata.p', 'r')
+X_extr = pickle.load(extr_file)[:, feats]
+extr_file.close()
+n_extr, dim = np.shape(X_extr)
+
+# Empirical means and weights
 means_emp, weights_emp = estimates_means_weights(X_extr, alphas, R, eps=0.1)
+rho_emp = (means_emp.T * weights_emp).T
+# print 'err emp', np.sqrt(np.sum((rho_true - rho_emp)**2))
+
+# Means and weights that verify moment constraint
+means_0, weights_0 = compute_new_means_and_weights(means_emp,
+                                                   weights_emp, dim)
+rho_0 = (means_0.T * weights_0).T
+# print 'err proj', np.sqrt(np.sum((rho_true - rho_0)**2))
+
+nu = 10*np.ones(K)
+theta = rho_nu_to_theta(rho_emp, nu)
+theta_2 = rho_nu_to_theta(rho_emp, nu)
+eps = 0.2
+gamma_z = compute_gamma_z(X_extr, alphas, theta, rho_0, eps)
+gamma_z_2 = compute_gamma_z(X_extr, alphas, theta, rho_0, eps)
+# Bounds
+bds_r = [(0, 1./dim) for i in range(len(theta[:-K]))]
+bds_n = [(0, None) for i in range(K)]
+bds = bds_r + bds_n
+n_loop = 10
+theta_list = []
+rho_list = []
+nu_list = []
+gam_z = []
+theta_list_2 = []
+rho_list_2 = []
+nu_list_2 = []
+gam_z_2 = []
+for k in range(n_loop):
+    # diffev
+    # print 'err label', np.sum(np.argmax(gamma_z, axis=1) != y_label[ind_extr])
+    theta_list.append(theta)
+    t0 = time.clock()
+    theta = ms.diffev(likelihood, theta,
+                      args=(rho_0, X_extr, gamma_z, alphas),
+                      bounds=bds,
+                      constraints=theta_constraint)
+    print time.clock() - t0
+    rho, nu = theta_to_rho_nu(theta, rho_0)
+    rho_list.append(rho)
+    nu_list.append(nu)
+    # print 'err rho', np.sqrt(np.sum((rho_true - rho)**2))
+    # print 'err nu', np.sqrt(np.sum((nu_true - nu)**2))
+    gam_z.append(gamma_z)
+    gamma_z = compute_gamma_z(X_extr, alphas, theta, rho_0, eps)
+    # fmin
+    # print 'err label', np.sum(np.argmax(gamma_z_2, axis=1) !=
+    #                           y_label[ind_extr])
+    # theta_list_2.append(theta_2)
+    # t0 = time.clock()
+    # theta_2 = ms.fmin(likelihood, theta_2,
+    #                   args=(rho_0, X_extr, gamma_z_2, alphas),
+    #                   bounds=bds,
+    #                   constraints=theta_constraint)
+    # print time.clock() - t0
+    # rho_2, nu_2 = theta_to_rho_nu(theta_2, rho_0)
+    # rho_list_2.append(rho_2)
+    # nu_list_2.append(nu_2)
+    # # print 'err rho', np.sqrt(np.sum((rho_true - rho_2)**2))
+    # # print 'err nu', np.sqrt(np.sum((nu_true - nu_2)**2))
+    # gam_z_2.append(gamma_z_2)
+    # gamma_z_2 = compute_gamma_z(X_extr, alphas, theta_2, rho_0, eps)
+
+# # EM algo ineq
+# print 'EM algo'
+# n_loop = 10
+# # Init
+# nu = 10*np.ones(K)
+# theta = rho_nu_to_theta_ineq(rho_0, nu)
+# theta_ms = [theta]
+# rho_ms = [rho_0]
+# nu_ms = [nu]
+# gam_z = []
+# # Bounds
+# bds_r = [(0, 1./dim) for i in range(len(theta[:-K]))]
+# bds_n = [(0, None) for i in range(K)]
+# bds = bds_r + bds_n
+# # Constraints
+# inds_theta = vars_ind_theta(rho_0)
+# # cons = [{'type': 'ineq',
+# #          'fun': make_fun_constraint(inds_theta[j])} for
+# #         j in inds_theta.keys()]
+# n_t = len(theta)
+# n_i = len(inds_theta)
+# G = np.zeros((n_i, n_t))
+# for i, ind in enumerate(inds_theta.values()):
+#     for k in range(ind[0], ind[1]):
+#         G[i, k] = 1
+# h = 1./dim*np.ones(n_i)
+# cons = linear_symbolic(G=G, h=h)
+# solv = generate_solvers(cons)
+# constraint = generate_constraint(solv)
+# pf = generate_penalty(generate_conditions(cons))
+# # cf = generate_constraint(generate_solvers(cons))
+
+# k = 0
+# while k < n_loop:
+#     # E-step mystic
+#     gamma_z = compute_gamma_z(X_extr, alphas, theta, rho_0)
+#     gam_z.append(gamma_z)
+#     # print 'err label', np.sum(np.argmax(gamma_z, axis=1) != y_label[ind_extr])
+
+#     # M-step mystic
+#     print 'likelihood', likelihood_ineq(theta, rho_0, X_extr, gamma_z, alphas)
+#     theta_ms.append(theta)
+#     theta = ms.diffev(likelihood_ineq, theta,
+#                       args=(rho_0, X_extr, gamma_z, alphas),
+#                       bounds=bds,
+#                       penalty=pf)
+#     rho, nu = theta_to_rho_nu_ineq(theta, rho_0)
+#     # print 'err rho', np.sqrt(np.sum((rho_true - rho)**2))
+#     # print 'err nu', np.sqrt(np.sum((nu_true - nu)**2))
+#     rho_ms.append(rho)
+#     nu_ms.append(nu)
+#     k += 1
+
+
+# # Estimate means weights with true label
 # means_lab = np.zeros((K, dim))
 # for k, alpha in enumerate(alphas):
 #     ind_k = np.nonzero(y_label[ind_extr] == k)[0]
@@ -543,10 +750,6 @@ means_emp, weights_emp = estimates_means_weights(X_extr, alphas, R, eps=0.1)
 #                                   axis=0)
 # weights_lab = np.array([len(np.nonzero(y_label[ind_extr] == k)[0])
 #                         for k in range(K)]) / float(len(ind_extr))
-
-# # New means and weights
-# means_0, weights_0 = compute_new_means_and_weights(means_emp,
-#                                                    weights_emp, dim)
 
 # # M-step without constraint
 # nu_0 = 10*np.ones(K)
@@ -564,18 +767,7 @@ means_emp, weights_emp = estimates_means_weights(X_extr, alphas, R, eps=0.1)
 #                                                        weights_1,
 #                                                        dim)
 
-# M-step ineq
-nu_2 = 10*np.ones(K)
-rho_0 = (means_emp.T * weights_emp).T
-gamma_z = compute_gamma_z(X_extr, alphas, means_emp, nu_2, weights_emp)
-theta_0 = rho_nu_to_theta_ineq(rho_0, nu_2)
-inds_theta = vars_ind_theta(rho_0)
-cons = [{'type': 'ineq',
-         'fun': make_fun_constraint(inds_theta[j])} for j in inds_theta.keys()]
-bds_r = [(0, 1./dim) for i in range(len(theta_0[:-K]))]
-bds_n = [(0, None) for i in range(K)]
-bds = bds_r + bds_n
-print 'minimization'
+# # scipy optimize ineq
 # res = optimize.minimize(likelihood_ineq,
 #                         theta_0,
 #                         args=(rho_0, X_extr, gamma_z, alphas),
@@ -587,17 +779,6 @@ print 'minimization'
 # weights_res = np.sum(rho_res, axis=1)
 # means_res = (rho_res.T / weights_res).T
 
-# M-step mystic
-theta_ms = ms.diffev2(likelihood_ineq, theta_0,
-                      args=(rho_0, X_extr, gamma_z, alphas),
-                      bounds=bds)
-rho_ms, nu_ms = theta_to_rho_nu_ineq(theta_ms, rho_0)
-weights_ms = np.sum(rho_ms, axis=1)
-means_ms = (rho_ms.T / weights_ms).T
-print 'err means emp', np.sum((mu - means_emp)**2)
-print 'err weights emp', np.sum((p - weights_emp)**2)
-print 'err means lhd constraint', np.sum((mu - means_ms)**2)
-print 'err weights lhd constraint', np.sum((p - weights_ms)**2)
 # # M-step eq
 # Theta0 = theta_init(n_means, n_weights, alphas, nu=2.)
 # # Theta0 = np.array([0.1, 0.2, 0.3, 0.3, 0.2, 6.])

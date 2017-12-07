@@ -7,6 +7,17 @@ import networkx as nx
 # CLEF functions #
 ##################
 
+
+def find_R(x_sim, eps):
+    R = 0
+    n_exrt = len(extreme_points(x_sim, R)[0])
+    while n_exrt > eps*len(x_sim):
+        R += 1
+        n_exrt = len(extreme_points(x_sim, R)[0])
+
+    return R
+
+
 def rank_transformation(x_raw):
     n_sample, n_dim = np.shape(x_raw)
     mat_rank = np.argsort(x_raw, axis=0)[::-1]
@@ -18,20 +29,7 @@ def rank_transformation(x_raw):
     return x_pareto
 
 
-def find_R(x_sim, R_0, eps):
-    """
-    Find R s.t only eps*100% of the points remain
-    """
-    R = R_0
-    n_exrt = len(extrem_points(x_sim, R))
-    while n_exrt > eps*len(x_sim):
-        R += 250
-        n_exrt = len(extrem_points(x_sim, R))
-
-    return R
-
-
-def extrem_points(data_rank, R):
+def extreme_points(data_rank, R):
     """
         Input:
             -data_rank = data after normalization
