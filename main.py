@@ -1,4 +1,5 @@
 import numpy as np
+from numpy import genfromtxt
 import pickle
 from scipy import optimize
 import scipy.special as sp
@@ -6,6 +7,7 @@ import scipy.stats as st
 import mystic.solvers as ms
 import time
 
+import damex_algo as dmx
 import gen_multivar_evd as gme
 import clef_algo as clf
 
@@ -606,38 +608,63 @@ def theta_constraint(theta):
 # # X_extr = pickle.load(extr_file)[:2000]
 # # extr_file.close()
 
-# Real data
-R = 743
-alphas_file = open('alphas_rdata.p', 'r')
-alphas = pickle.load(alphas_file)
-alphas_file.close()
-feats = set(alphas[0])
-K = len(alphas)
-for k in range(1, K):
-    feats = feats | set(alphas[k])
-feats = list(feats)
-extr_file = open('extr_rdata.p', 'r')
-X_extr = pickle.load(extr_file)[:, feats]
-extr_file.close()
-n_extr, dim = np.shape(X_extr)
+# Airbus Data
+data = genfromtxt('Data_Anne.csv', delimiter=',')
+data = data[1:, 1:]
+n, d = np.shape(data)
+
+# Each feature is doubled, separating points above and below the mean
+mean_data = np.mean(data, axis=0)
+data_var = data - mean_data
+data_doubled = np.zeros((n, 2*d))
+for j in range(d):
+    data_doubled[data_var[:, j] > 0, j] = data_var[data_var[:, j] > 0, j]
+    data_doubled[data_var[:, j] < 0, d + j] = - data_var[data_var[:, j] < 0, j]
+
+# Rank transformation, for each margin (column) V_i = n/(rank(X_i) + 1)
+data_rank = clf.rank_transformation(data_doubled)
+
+# Damex
+k = 25
+R = n/float(k)
+x_extr = data_rank[np.max(data_rank, axis=1) > R]
+eps = 0.3
+x_damex = 1*(x_extr > eps*R)
+
+# Cluster of identical line of x_damex
+K = 10
+alphas_mass_damex = dmx.check_dataset(x_damex)
+alphas_damex = [alpha[0] for alpha in alphas_mass_damex]
+alphas = alphas_damex[:K]
+
+features_involved = set(alphas[0])
+for alpha in alphas:
+    features_involved |= set(alpha)
+features_involved = sorted(list(features_involved))
+dim = len(features_involved)
+dict_feat_involved = {feat_j: j for j, feat_j in enumerate(features_involved)}
+alphas_converted = [[dict_feat_involved[j] for j in alpha] for alpha in alphas]
+X_extr = x_extr[:, features_involved]
 
 # Empirical means and weights
-means_emp, weights_emp = estimates_means_weights(X_extr, alphas, R, eps=0.1)
+means_emp, weights_emp = estimates_means_weights(X_extr,
+                                                 alphas_converted,
+                                                 R,
+                                                 eps=0.1)
 rho_emp = (means_emp.T * weights_emp).T
-# print 'err emp', np.sqrt(np.sum((rho_true - rho_emp)**2))
+# # print 'err emp', np.sqrt(np.sum((rho_true - rho_emp)**2))
 
 # Means and weights that verify moment constraint
 means_0, weights_0 = compute_new_means_and_weights(means_emp,
-                                                   weights_emp, dim)
+                                                   weights_emp,
+                                                   dim)
 rho_0 = (means_0.T * weights_0).T
 # print 'err proj', np.sqrt(np.sum((rho_true - rho_0)**2))
 
 nu = 10*np.ones(K)
 theta = rho_nu_to_theta(rho_emp, nu)
-theta_2 = rho_nu_to_theta(rho_emp, nu)
 eps = 0.2
-gamma_z = compute_gamma_z(X_extr, alphas, theta, rho_0, eps)
-gamma_z_2 = compute_gamma_z(X_extr, alphas, theta, rho_0, eps)
+gamma_z = compute_gamma_z(X_extr, alphas_converted, theta, rho_0, eps)
 # Bounds
 bds_r = [(0, 1./dim) for i in range(len(theta[:-K]))]
 bds_n = [(0, None) for i in range(K)]
@@ -647,17 +674,13 @@ theta_list = []
 rho_list = []
 nu_list = []
 gam_z = []
-theta_list_2 = []
-rho_list_2 = []
-nu_list_2 = []
-gam_z_2 = []
 for k in range(n_loop):
     # diffev
     # print 'err label', np.sum(np.argmax(gamma_z, axis=1) != y_label[ind_extr])
     theta_list.append(theta)
     t0 = time.clock()
     theta = ms.diffev(likelihood, theta,
-                      args=(rho_0, X_extr, gamma_z, alphas),
+                      args=(rho_0, X_extr, gamma_z, alphas_converted),
                       bounds=bds,
                       constraints=theta_constraint)
     print time.clock() - t0
@@ -667,24 +690,7 @@ for k in range(n_loop):
     # print 'err rho', np.sqrt(np.sum((rho_true - rho)**2))
     # print 'err nu', np.sqrt(np.sum((nu_true - nu)**2))
     gam_z.append(gamma_z)
-    gamma_z = compute_gamma_z(X_extr, alphas, theta, rho_0, eps)
-    # fmin
-    # print 'err label', np.sum(np.argmax(gamma_z_2, axis=1) !=
-    #                           y_label[ind_extr])
-    # theta_list_2.append(theta_2)
-    # t0 = time.clock()
-    # theta_2 = ms.fmin(likelihood, theta_2,
-    #                   args=(rho_0, X_extr, gamma_z_2, alphas),
-    #                   bounds=bds,
-    #                   constraints=theta_constraint)
-    # print time.clock() - t0
-    # rho_2, nu_2 = theta_to_rho_nu(theta_2, rho_0)
-    # rho_list_2.append(rho_2)
-    # nu_list_2.append(nu_2)
-    # # print 'err rho', np.sqrt(np.sum((rho_true - rho_2)**2))
-    # # print 'err nu', np.sqrt(np.sum((nu_true - nu_2)**2))
-    # gam_z_2.append(gamma_z_2)
-    # gamma_z_2 = compute_gamma_z(X_extr, alphas, theta_2, rho_0, eps)
+    gamma_z = compute_gamma_z(X_extr, alphas_converted, theta, rho_0, eps)
 
 # # EM algo ineq
 # print 'EM algo'
