@@ -8,6 +8,10 @@ import networkx as nx
 ##################
 
 
+def transform_to_pareto(X):
+    return (1 - np.exp(-X**-1))**-1
+
+
 def find_R(x_sim, eps):
     R = 0
     n_exrt = len(extreme_points(x_sim, R)[0])

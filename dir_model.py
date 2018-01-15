@@ -145,27 +145,3 @@ def generate_means_n_weights(alphas):
     p, mus = last_step(p, mus, K, d)
 
     return p, mus
-
-
-#############
-# Algorithm #
-#############
-
-# d = 14
-alphas = [[0],
-          [1, 2],
-          [3, 4, 5, 13],
-          [4, 6, 7],
-          [0, 6, 7, 8, 9],
-          [8, 9, 11],
-          [10, 11, 12]]
-p, mus = generate_means_n_weights(alphas)
-
-# for i in range(1):
-#     alphas = random_alphas(dim=30, nb_faces=6, max_size=20, p_geom=0.2)
-#     d = max([j for alpha in alphas for j in alpha])+1
-#     p, mus = generate_means_n_weights(alphas)
-#     if np.sum((np.sum(mus, axis=1) - 1)) > 1e-14:
-#         print 'sum each mean=1: false'
-#     if np.sum(np.sum(mus.T*p, axis=1) - 1/float(d)) > 1e-14:
-#         print 'ponderate sum=1/d: false'

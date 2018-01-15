@@ -2,21 +2,91 @@ import numpy as np
 import itertools as it
 
 
-####################
-# Constraint opt 1 #
-####################
+#####################
+# General functions #
+#####################
 
 
 def compute_betas(alphas, dim):
+    K = len(alphas)
+    mat_alphas = np.zeros((K, dim))
+    for k, alpha in enumerate(alphas):
+        mat_alphas[k, alpha] = 1
     betas = []
     for j in range(dim):
-        beta = []
-        for k, alpha in enumerate(alphas):
-            if j in alpha:
-                beta.append(k)
-        betas.append(beta)
+        betas.append(list(np.nonzero(mat_alphas[:, j])[0]))
 
     return betas
+
+
+##############
+# Projection #
+##############
+
+
+def compute_new_means_and_weights(means, weights, dim):
+    rhos = (means.T * weights).T
+    n_rhos = rhos / (dim * np.sum(rhos, axis=0))
+    new_weights = np.sum(n_rhos, axis=1)
+    new_means = (n_rhos.T / new_weights).T
+
+    return new_means, new_weights
+
+
+##############
+# Simulation #
+##############
+
+
+def random_means_and_weights(alphas, K, dim):
+    betas = compute_betas(alphas, dim)
+    rho = np.zeros((K, dim))
+    for j, beta in enumerate(betas):
+        rho[beta, j] = np.random.random(len(beta))
+        rho[beta, j] /= dim * np.sum(rho[beta, j])
+    weights = np.sum(rho, axis=1)
+    means = (rho.T / weights).T
+
+    return means, weights
+
+
+def gaussian_means_and_weights(rho, alphas, K, dim):
+    betas = compute_betas(alphas, dim)
+    n_rho = np.zeros((K, dim))
+    for j, beta in enumerate(betas):
+        rand_rho = -np.ones(len(beta))
+        cpt = 0.
+        while np.sum(rand_rho < 0.) > 0 and cpt < 1e3:
+            rand_rho = np.random.normal(rho[beta, j],
+                                        rho[beta, j],
+                                        size=len(beta))
+            cpt += 1
+        n_rho[beta, j] = rand_rho
+        n_rho[beta, j] /= dim * np.sum(n_rho[beta, j])
+    weights = np.sum(n_rho, axis=1)
+    means = (n_rho.T / weights).T
+
+    return means, weights
+
+
+def dirichlet_means_and_weights(rho_emp, nu, alphas, K, dim):
+    betas = compute_betas(alphas, dim)
+    rho = np.zeros((K, dim))
+    for j, beta in enumerate(betas):
+        if len(beta) == 1:
+            rho[beta, j] = 1./dim
+        else:
+            rho[beta, j] = np.random.dirichlet(nu*rho_emp[beta, j])
+            rho[beta, j] /= dim * np.sum(rho[beta, j])
+    weights = np.sum(rho, axis=1)
+    means = (rho.T / weights).T
+
+    return means, weights
+
+
+####################
+# Constraint opt 1 #
+####################
 
 
 def compute_b(means, weights, dim):
