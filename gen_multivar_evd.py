@@ -1,44 +1,9 @@
 import numpy as np
-import random as rd
 
 
 ###################
 # Simul functions #
 ###################
-
-
-def gen_random_alphas(dim, nb_faces, max_size, p_geom, max_loops=1e4):
-    """
-    Output:
-        - random subsets of {1,...,dim}
-    """
-    faces = np.zeros((nb_faces, dim))
-    size_alpha = min(np.random.geometric(p_geom) + 1, max_size)
-    alpha = rd.sample(range(dim), size_alpha)
-    faces[0, alpha] = 1
-    k = 1
-    l = 0
-    while k < nb_faces and l < max_loops:
-        size_alpha = min(np.random.geometric(p_geom) + 1, max_size)
-        alpha = rd.sample(range(dim), size_alpha)
-        face = np.zeros(dim)
-        face[alpha] = 1
-        test_sub = np.sum(np.prod(faces[:k]*face == face, axis=1))
-        test_sup = np.sum(np.prod(faces[:k]*face == faces[:k], axis=1))
-        if test_sub == 0 and test_sup == 0:
-            faces[k, alpha] = 1
-            k += 1
-        l += 1
-    alphas = [list(np.nonzero(f)[0]) for f in faces]
-    missing_feats = list(set(range(dim)) - set([j for alph in alphas
-                                                for j in alph]))
-    if len(missing_feats) > 1:
-        alphas.append(missing_feats)
-    if len(missing_feats) == 1:
-        missing_feats.append(list(set(range(dim)) - set(missing_feats))[0])
-        alphas.append(missing_feats)
-
-    return alphas
 
 
 def PS(alpha):

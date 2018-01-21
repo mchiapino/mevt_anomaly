@@ -8,53 +8,6 @@ import networkx as nx
 ##################
 
 
-def transform_to_pareto(X):
-    return (1 - np.exp(-X**-1))**-1
-
-
-def find_R(x_sim, eps):
-    R = 0
-    n_exrt = len(extreme_points(x_sim, R)[0])
-    while n_exrt > eps*len(x_sim):
-        R += 1
-        n_exrt = len(extreme_points(x_sim, R)[0])
-
-    return R
-
-
-def rank_transformation(x_raw):
-    n_sample, n_dim = np.shape(x_raw)
-    mat_rank = np.argsort(x_raw, axis=0)[::-1]
-    x_rank = np.zeros((n_sample, n_dim))
-    for i in xrange(n_dim):
-        x_rank[mat_rank[:, i], i] = np.arange(n_sample) + 1
-    x_pareto = n_sample/x_rank
-
-    return x_pareto
-
-
-def extreme_points(data_rank, R):
-    """
-        Input:
-            -data_rank = data after normalization
-        Output:
-            -Extreme data, X s.t max(X) > R
-    """
-    ind_extr = np.nonzero(np.max(data_rank, axis=1) > R)[0]
-
-    return data_rank[ind_extr, :], ind_extr
-
-
-def above_thresh_binary(data_extr, R):
-    """
-        Input:
-            -data_extr = matrix(n x d)
-        Output:
-            -binary data = matrix(n x d), X_ij = 1 if data_extr_ij > R
-    """
-    return 1.*(data_extr > R)
-
-
 def alphas_init(binary_thresh, mu_0):
     """
         Input:
@@ -68,12 +21,12 @@ def alphas_init(binary_thresh, mu_0):
     asymptotic_pair = []
     for (i, j) in it.combinations(range(n_stations), 2):
         pair_tmp = binary_thresh[:, [i, j]]
-        one_out_of_two = float(len(np.nonzero(np.sum(pair_tmp,
-                                                     axis=1) > 0)[0]))
+        one_out_of_two = np.sum(np.sum(pair_tmp, axis=1) > 0)
         two_on_two = np.sum(np.prod(pair_tmp, axis=1))
-        proba = two_on_two / one_out_of_two
-        if proba > mu_0:
-            asymptotic_pair.append([i, j])
+        if one_out_of_two > 0:
+            proba = two_on_two / one_out_of_two
+            if proba > mu_0:
+                asymptotic_pair.append([i, j])
 
     return asymptotic_pair
 

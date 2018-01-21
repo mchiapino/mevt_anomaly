@@ -1,5 +1,6 @@
 import numpy as np
-import itertools as it
+
+import generate_alphas as ga
 
 
 #####################
@@ -7,16 +8,20 @@ import itertools as it
 #####################
 
 
-def compute_betas(alphas, dim):
-    K = len(alphas)
-    mat_alphas = np.zeros((K, dim))
-    for k, alpha in enumerate(alphas):
-        mat_alphas[k, alpha] = 1
-    betas = []
-    for j in range(dim):
-        betas.append(list(np.nonzero(mat_alphas[:, j])[0]))
+def compute_betas(alphas):
+    feats = list(set([j for alph in alphas for j in alph]))
+    mat_alphas = ga.alphas_matrix(alphas)
+    betas = {j: list(np.nonzero(mat_alphas[:, j_0])[0])
+             for j_0, j in enumerate(feats)}
 
     return betas
+
+
+def rho_to_means_weights(rho):
+    weights = np.sum(rho, axis=1)
+    means = (rho.T / weights).T
+
+    return means, weights
 
 
 ##############
@@ -24,7 +29,7 @@ def compute_betas(alphas, dim):
 ##############
 
 
-def compute_new_means_and_weights(means, weights, dim):
+def project_means_and_weights(means, weights, dim):
     rhos = (means.T * weights).T
     n_rhos = rhos / (dim * np.sum(rhos, axis=0))
     new_weights = np.sum(n_rhos, axis=1)
@@ -38,20 +43,20 @@ def compute_new_means_and_weights(means, weights, dim):
 ##############
 
 
-def random_means_and_weights(alphas, K, dim):
-    betas = compute_betas(alphas, dim)
-    rho = np.zeros((K, dim))
-    for j, beta in enumerate(betas):
-        rho[beta, j] = np.random.random(len(beta))
-        rho[beta, j] /= dim * np.sum(rho[beta, j])
-    weights = np.sum(rho, axis=1)
-    means = (rho.T / weights).T
+def random_rho(alphas, d):
+    K = len(alphas)
+    betas = compute_betas(alphas)
+    d_alphas = len(betas)
+    rho = np.zeros((K, d_alphas))
+    for j_0, j in enumerate(betas):
+        rho[betas[j], j_0] = np.random.random(len(betas[j]))
+        rho[betas[j], j_0] /= d * np.sum(rho[betas[j], j_0])
 
-    return means, weights
+    return rho
 
 
 def gaussian_means_and_weights(rho, alphas, K, dim):
-    betas = compute_betas(alphas, dim)
+    betas = compute_betas(alphas)
     n_rho = np.zeros((K, dim))
     for j, beta in enumerate(betas):
         rand_rho = -np.ones(len(beta))
@@ -70,7 +75,7 @@ def gaussian_means_and_weights(rho, alphas, K, dim):
 
 
 def dirichlet_means_and_weights(rho_emp, nu, alphas, K, dim):
-    betas = compute_betas(alphas, dim)
+    betas = compute_betas(alphas)
     rho = np.zeros((K, dim))
     for j, beta in enumerate(betas):
         if len(beta) == 1:
@@ -82,106 +87,3 @@ def dirichlet_means_and_weights(rho_emp, nu, alphas, K, dim):
     means = (rho.T / weights).T
 
     return means, weights
-
-
-####################
-# Constraint opt 1 #
-####################
-
-
-def compute_b(means, weights, dim):
-    return 2 * (1./dim - np.dot(means.T, weights))
-
-
-def compute_theta(alphas, dim):
-    thetas = []
-    for j in range(dim):
-        theta = []
-        for alpha in alphas:
-            if j in alpha:
-                theta += alpha
-        theta = list(set([l for l in theta if l != j]))
-        thetas.append(theta)
-
-    return thetas
-
-
-def compute_delta(alphas, dim):
-    deltas = {}
-    for j, l in it.permutations(range(dim), 2):
-        delta = []
-        for k, alpha in enumerate(alphas):
-            if j in alpha and l in alpha:
-                delta.append(k)
-        deltas[(j, l)] = delta
-
-    return deltas
-
-
-def compute_mat_A(weights, alphas, dim):
-    betas = compute_betas(alphas, dim)
-    thetas = compute_theta(alphas, dim)
-    deltas = compute_delta(alphas, dim)
-    A = np.zeros((dim, dim))
-    for j, l in it.combinations_with_replacement(range(dim), 2):
-        if j == l:
-            A[j, j] = sum([weights[h]**2 * (1 - len(alphas[h])**-1)
-                           for h in betas[j]])
-        if l in thetas[j]:
-            A[j, l] = - sum([weights[h]**2 * len(alphas[h])**-1
-                             for h in deltas[(j, l)]])
-            A[l, j] = A[j, l]
-
-    return A
-
-
-def compute_new_means(weights, means, alphas, lambds):
-    K, dim = np.shape(means)
-    new_means = np.zeros((K, dim))
-    for k in range(K):
-        for j in alphas[k]:
-            new_means[k, j] = means[k, j] + \
-                              weights[k] * \
-                              (lambds[j] - sum([lambds[l]
-                                                for l in alphas[k]]) /
-                               len(alphas[k]))/2.
-
-    return new_means
-
-
-def compute_mat_Ap(means):
-    Ap = np.dot(means.T, means) - np.dot(np.sum(means, axis=0)[np.newaxis].T,
-                                         np.mean(means, axis=0)[np.newaxis])
-
-    return Ap
-
-
-def compute_new_weights(weights, means, lambds_p):
-    new_weights = weights + 0.5*np.dot(means - np.mean(means, axis=0),
-                                       lambds_p)
-
-    return new_weights
-
-
-####################
-# Constraint opt 2 #
-####################
-
-
-def f(lambds, means, weights):
-    return np.sum(2*weights) + np.power(np.sum(np.dot(means, lambds)), 2)
-
-
-def phi(lambds, means, weights):
-    return np.log(np.dot(weights, np.exp(np.dot(means, lambds)))) \
-        - np.mean(lambds)
-
-
-def exp_phi(lambds, means, weights):
-    return np.dot(weights, np.exp(np.dot(means, lambds))) \
-        * np.exp(-np.mean(lambds))
-
-
-def compute_new_weights_2(lambds, means, weights):
-    return weights * np.exp(np.dot(means, lambds)) \
-        / np.dot(weights, np.exp(np.dot(means, lambds)))
