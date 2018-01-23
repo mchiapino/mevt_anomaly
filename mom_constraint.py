@@ -19,9 +19,61 @@ def compute_betas(alphas):
 
 def rho_to_means_weights(rho):
     weights = np.sum(rho, axis=1)
-    means = (rho.T / weights).T
+    means_mat = (rho.T / weights).T
+    means = means_to_list(means_mat)
 
     return means, weights
+
+
+def means_weights_to_rho(means_list, weights, alphas):
+    means_mat = means_to_mat(means_list, alphas)
+
+    return (means_mat.T * weights).T
+
+
+def means_to_list(means):
+    return [mean[np.nonzero(mean)] for mean in means]
+
+
+def means_to_mat(means_list, alphas):
+    feats = list(set([j for alph in alphas for j in alph]))
+    d = len(feats)
+    alphas_converted = ga.alphas_conversion(alphas)
+    K = len(alphas)
+    means_mat = np.zeros((K, d))
+    for k in range(K):
+        means_mat[k, alphas_converted[k]] = means_list[k]
+
+    return means_mat
+
+
+def rho_nu_to_theta(rho, nu):
+    ind = np.nonzero(np.sum(rho > 0, axis=0) > 1)[0]
+    theta = []
+    for j in ind:
+        ind_j = np.nonzero(rho[:, j])[0]
+        if len(ind_j) > 1:
+            for k in ind_j:
+                theta.append(rho[k, j])
+
+    return np.concatenate((np.array(theta), nu))
+
+
+def theta_to_rho_nu(theta, rho_0, d):
+    K, d_alphas = np.shape(rho_0)
+    rho = np.zeros((K, d_alphas))
+    cpt = 0
+    for j in range(d_alphas):
+        ind_j = np.nonzero(rho_0[:, j])[0]
+        if len(ind_j) == 1:
+            rho[ind_j, j] = 1./d
+        else:
+            for i in ind_j:
+                rho[i, j] = theta[cpt]
+                cpt += 1
+    nu = theta[cpt:]
+
+    return rho, nu
 
 
 ##############
@@ -29,13 +81,8 @@ def rho_to_means_weights(rho):
 ##############
 
 
-def project_means_and_weights(means, weights, dim):
-    rhos = (means.T * weights).T
-    n_rhos = rhos / (dim * np.sum(rhos, axis=0))
-    new_weights = np.sum(n_rhos, axis=1)
-    new_means = (n_rhos.T / new_weights).T
-
-    return new_means, new_weights
+def project_rho(rho, d):
+    return rho / (d * np.sum(rho, axis=0))
 
 
 ##############

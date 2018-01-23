@@ -1,41 +1,10 @@
 import numpy as np
 import scipy.special as sp
+import scipy.stats as st
 
 import generate_alphas as ga
 import dirichlet as dr
-
-
-########
-# Init #
-########
-
-
-def estimates_means_weights(X_extr, X_damex, alphas):
-    K = len(alphas)
-    dim = len(X_extr[0])
-    points_face = assign_face_to_points(X_damex, alphas)
-    W_proj = [(X_extr[np.nonzero(points_face == k)[0], :][:, alphas[k]].T /
-               np.sum(X_extr[np.nonzero(points_face == k)[0], :][:, alphas[k]],
-                      axis=1)).T
-              for k in range(K)]
-    means = np.zeros((K, dim))
-    for k in range(K):
-        means[k, alphas[k]] = np.mean(W_proj[k], axis=0)
-        weights = np.array([np.sum(points_face == k)/float(len(X_extr))
-                            for k in range(K)])
-
-    return means, weights
-
-
-def assign_face_to_points(X_damex, alphas):
-    n, dim = np.shape(X_damex)
-    K = len(alphas)
-    X_alphas = np.zeros((K, dim))
-    for k in range(K):
-        X_alphas[k, alphas[k]] = 1
-    points_face = np.argmax(np.dot(X_damex, X_alphas.T), axis=1)
-
-    return points_face
+import mom_constraint as mc
 
 
 ###########
@@ -47,65 +16,129 @@ def proj_X_on_simplex_alpha(X, alpha):
     return (X[:, alpha].T / np.sum(X[:, alpha], axis=1)).T
 
 
-def rho_nu_to_theta(rho, nu):
-    K, dim = np.shape(rho)
-    theta = []
-    for j in range(dim):
-        ind_j = np.nonzero(rho[:, j])[0]
-        if len(ind_j) > 1:
-            for k in ind_j:
-                theta.append(rho[k, j])
-
-    return np.concatenate((np.array(theta), nu))
-
-
-def theta_to_rho_nu(theta, rho_0):
+def theta_constraint(theta):
     K, dim = np.shape(rho_0)
-    rho = np.zeros((K, dim))
-    cpt = 0
-    for j in range(dim):
-        ind_j = np.nonzero(rho_0[:, j])[0]
-        if len(ind_j) == 1:
-            rho[ind_j, j] = 1./dim
-        else:
-            for i in ind_j:
-                rho[i, j] = theta[cpt]
-                cpt += 1
-    nu = theta[cpt:]
+    rho, nu = theta_to_rho_nu(theta, rho_0)
+    new_rho = rho / (dim * np.sum(rho, axis=0))
+    new_theta = rho_nu_to_theta(new_rho, nu)
 
-    return rho, nu
+    return new_theta
 
 
-def compute_gamma_z(X, alphas, theta, rho_0, lambd):
-    rho, nus = theta_to_rho_nu(theta, rho_0)
-    N, dim = np.shape(X)
+def compute_gamma_z(x_extr, alphas, alphas_singlet, theta, rho_0, lbda):
+    n_extr, d = np.shape(x_extr)
+    rho, nu = mc.theta_to_rho_nu(theta, rho_0, d)
+    means, weights = mc.rho_to_means_weights(rho)
     K = len(alphas)
-    gamma_z = np.zeros((N, K))
-    alphas_c = ga.alphas_complement(alphas, dim)
-    weights = np.sum(rho, axis=1)
-    means = (rho.T / weights).T
-    for n in range(N):
+    alphas_c = ga.alphas_complement(alphas, d)
+    K_s = len(alphas_singlet)
+    alphas_c_s = ga.alphas_complement(alphas_singlet, d)
+    gamma_z = np.zeros((n_extr, K + K_s))
+    for i in range(n_extr):
         for k, alpha in enumerate(alphas):
-            r = np.sum(X[n, alpha])
-            w = X[n, alpha] / r
-            eps = X[n, alphas_c[k]]
-            gamma_z[n, k] = (weights[k] *
-                             dr.dirichlet(w, means[k, alpha], nus[k]) *
-                             np.prod(dr.exp_distrib(eps, lambd)) * r**-2)
-            if np.isnan(gamma_z[n, k]):
-                gamma_z[n, k] = 0
-        if np.sum(gamma_z[n]) == 0 or np.isnan(np.sum(gamma_z[n])):
-            ind_max = np.argmax(gamma_z[n])
-            gamma_z[n] = 0.
-            gamma_z[n, ind_max] = 1.
-        gamma_z[n] /= np.sum(gamma_z[n])
+            gamma_z[i, k] = (weights[k] *
+                             dr.dirichlet_densities(x_extr[i], means[k], nu[k],
+                                                    lbda[k],
+                                                    alpha, alphas_c[k]))
+        for k_s, alpha_s in enumerate(alphas_singlet):
+            x = x_extr[i, alphas_c_s[k_s]] - 1
+            l_k_s = lbda[K + k_s]
+            gamma_z[i, K + k_s] = (x_extr[i, alpha_s]**-2 *
+                                   np.prod(st.expon.pdf(x, scale=1./l_k_s)))
+            # lbda**(d-1) *
+            # np.exp(-lbda *
+            #        np.sum(x_extr[i,
+            #                      alphas_c_s[k_s]] - 1)))
+        # if np.sum(gamma_z[i]) == 0 or np.isnan(np.sum(gamma_z[i])):
+        #     ind_max = np.argmax(gamma_z[i])
+        #     gamma_z[i] = 0.
+        #     gamma_z[i, ind_max] = 1.
+        gamma_z[i] /= np.sum(gamma_z[i])
 
     return gamma_z
 
 
 def likelihood(theta, rho_0, X, gamma_z, alphas):
     N, dim = np.shape(X)
-    rho, nu = theta_to_rho_nu(theta, rho_0)
+    rho, nu = mc.theta_to_rho_nu(theta, rho_0, dim)
+    means, p = mc.rho_to_means_weights(rho)
+    l_hood = 0.
+    for k, alpha in enumerate(alphas):
+        W = proj_X_on_simplex_alpha(X, alpha)
+        l_hood += np.dot(gamma_z[:, k], np.log(p[k]) +
+                         st.dirichlet.logpdf(W.T, means[k] * nu[k]))
+
+    return -l_hood
+
+
+def compute_new_lambda(x_extr, gamma_z, alphas, alphas_singlet):
+    d = len(x_extr[0])
+    K = len(alphas)
+    alphas_c = ga.alphas_complement(alphas, d)
+    K_s = len(alphas_singlet)
+    alphas_c_s = ga.alphas_complement(alphas_singlet, d)
+    lbda = []
+    for k in range(K):
+        lbda_k = (len(alphas_c[k]) *
+                  np.sum(gamma_z[:, k]) /
+                  np.sum(x_extr[:, alphas_c[k]] - 1))
+        lbda.append(lbda_k)
+    for k_s in range(K_s):
+        lbda_k_s = (len(alphas_c_s[k_s]) *
+                    np.sum(gamma_z[:, K+k_s]) /
+                    np.sum(x_extr[:, alphas_c_s[k_s]] - 1))
+        lbda.append(lbda_k_s)
+
+    return np.array(lbda)
+
+
+def likelihood_lambda(lbda, x_extr, gamma_z, alphas, alphas_singlet):
+    d = len(x_extr[0])
+    K = len(alphas)
+    alphas_c = ga.alphas_complement(alphas, d)
+    K_s = len(alphas_singlet)
+    alphas_c_s = ga.alphas_complement(alphas_singlet, d)
+    l_hood = 0
+    for k in range(K):
+        l_hood += np.dot(gamma_z[:, k],
+                         np.sum(st.expon.logpdf(x_extr[:, alphas_c[k]],
+                                                scale=lbda[k]**-1), axis=1))
+    for k_s in range(K_s):
+        l_hood += np.dot(gamma_z[:, K+k_s],
+                         np.sum(st.expon.logpdf(x_extr[:, alphas_c_s[k_s]],
+                                                scale=lbda[K+k_s]**-1),
+                         axis=1))
+
+    return -l_hood
+
+
+def compute_gamma_z_bis(x_extr, alphas, theta, rho_0, lambd):
+    n_extr, d = np.shape(x_extr)
+    rho, nu = mc.theta_to_rho_nu(theta, rho_0, d)
+    K = len(alphas)
+    gamma_z = np.zeros((n_extr, K))
+    alphas_c = ga.alphas_complement(alphas, d)
+    means, weights = mc.rho_to_means_weights(rho)
+    for i in range(n_extr):
+        for k, alpha in enumerate(alphas):
+            r = np.sum(x_extr[i, alpha])
+            w = x_extr[i, alpha] / r
+            eps = x_extr[i, alphas_c[k]]
+            gamma_z[i, k] = (weights[k] *
+                             dr.dirichlet(w, means[k], nu[k]) *
+                             np.prod(dr.exp_distrib(eps, lambd)) * r**-2)
+        if np.sum(gamma_z[i]) == 0 or np.isnan(np.sum(gamma_z[i])):
+            ind_max = np.argmax(gamma_z[i])
+            gamma_z[i] = 0.
+            gamma_z[i, ind_max] = 1.
+        gamma_z[i] /= np.sum(gamma_z[i])
+
+    return gamma_z
+
+
+def likelihood_bis(theta, rho_0, X, gamma_z, alphas):
+    N, dim = np.shape(X)
+    rho, nu = mc.theta_to_rho_nu(theta, rho_0, dim)
     lhood = 0.
     for k, alpha in enumerate(alphas):
         W = proj_X_on_simplex_alpha(X, alpha)

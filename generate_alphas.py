@@ -51,3 +51,10 @@ def alphas_matrix(alphas):
         mat_alphas[k, alpha] = 1
 
     return mat_alphas[:, np.sum(mat_alphas, axis=0) > 0]
+
+
+def alphas_conversion(alphas):
+    feats = list(set([j for alph in alphas for j in alph]))
+    feats_dict = {feat: j for j, feat in enumerate(feats)}
+
+    return [[feats_dict[j] for j in alpha] for alpha in alphas]
