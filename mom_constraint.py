@@ -8,6 +8,20 @@ import generate_alphas as ga
 #####################
 
 
+class Theta_constraint:
+    def __init__(self, rho_0, d):
+        self.rho_0, self.d = rho_0, d
+
+    def __call__(self, theta):
+        rho_0, d = self.rho_0, self.d
+        K, dim = np.shape(rho_0)
+        rho, nu = theta_to_rho_nu(theta, rho_0, d)
+        new_rho = rho / (d * np.sum(rho, axis=0))
+        new_theta = rho_nu_to_theta(new_rho, nu, rho_0)
+
+        return new_theta
+
+
 def compute_betas(alphas):
     feats = list(set([j for alph in alphas for j in alph]))
     mat_alphas = ga.alphas_matrix(alphas)
@@ -47,11 +61,11 @@ def means_to_mat(means_list, alphas):
     return means_mat
 
 
-def rho_nu_to_theta(rho, nu):
-    ind = np.nonzero(np.sum(rho > 0, axis=0) > 1)[0]
+def rho_nu_to_theta(rho, nu, rho_0):
+    ind = np.nonzero(np.sum(rho_0 > 0, axis=0) > 1)[0]
     theta = []
     for j in ind:
-        ind_j = np.nonzero(rho[:, j])[0]
+        ind_j = np.nonzero(rho_0[:, j])[0]
         if len(ind_j) > 1:
             for k in ind_j:
                 theta.append(rho[k, j])

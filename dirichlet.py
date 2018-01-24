@@ -42,7 +42,7 @@ def dirichlet_mixture(means, p, nu, lbda,
             y_label[i] = len(alphas) + k_s
             alpha_c_k = list(set(range(dim)) - set(alphas_singlet[k_s]))
             X[i, alphas_singlet[k_s]] = x_par[i]
-            X[i, alpha_c_k] = 1 + np.random.exponential(1/lbda[k],
+            X[i, alpha_c_k] = 1 + np.random.exponential(1/lbda[k_s],
                                                         len(alpha_c_k))
 
     return X, y_label
