@@ -3,6 +3,26 @@ import itertools as it
 import networkx as nx
 
 
+#############
+# Clef algo #
+#############
+
+
+def clef(x_norm, R, kappa_min):
+    x_bin = x_norm[np.max(x_norm, axis=1) > R] > R
+    alphas_dict = find_alphas(x_bin, kappa_min)
+    alphas = find_maximal_alphas(alphas_dict)
+
+    return alphas
+
+
+def clef_0(x_bin, kappa_min):
+    alphas_dict = find_alphas(x_bin, kappa_min)
+    alphas = find_maximal_alphas(alphas_dict)
+
+    return alphas
+
+
 ##################
 # CLEF functions #
 ##################
@@ -134,7 +154,7 @@ def find_alphas_to_try(alphas, G, k):
     return alphas_to_try
 
 
-def find_maximal_alphas(A):
+def find_maximal_alphas(A, lst=True):
     """
         Input:
             -A = dict {k: list of alphas that contain k features}
@@ -154,6 +174,9 @@ def find_maximal_alphas(A):
         maximal_alphas.append(map(list, alpha_tmp))
         alphas_used = alphas_used + alpha_tmp
     maximal_alphas = maximal_alphas[::-1]
+    if lst:
+        maximal_alphas = [alpha for alphas_ in maximal_alphas
+                          for alpha in alphas_]
 
     return maximal_alphas
 

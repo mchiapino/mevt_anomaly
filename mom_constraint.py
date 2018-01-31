@@ -1,4 +1,5 @@
 import numpy as np
+import scipy.stats as st
 
 import generate_alphas as ga
 
@@ -9,15 +10,15 @@ import generate_alphas as ga
 
 
 class Theta_constraint:
-    def __init__(self, rho_0, d):
-        self.rho_0, self.d = rho_0, d
+    def __init__(self, mat_alphas, d):
+        self.mat_alphas, self.d = mat_alphas, d
 
     def __call__(self, theta):
-        rho_0, d = self.rho_0, self.d
-        K, dim = np.shape(rho_0)
-        rho, nu = theta_to_rho_nu(theta, rho_0, d)
+        mat_alphas, d = self.mat_alphas, self.d
+        K, dim = np.shape(mat_alphas)
+        rho, nu = theta_to_rho_nu(theta, mat_alphas, d)
         new_rho = rho / (d * np.sum(rho, axis=0))
-        new_theta = rho_nu_to_theta(new_rho, nu, rho_0)
+        new_theta = rho_nu_to_theta(new_rho, nu, mat_alphas)
 
         return new_theta
 
@@ -61,11 +62,11 @@ def means_to_mat(means_list, alphas):
     return means_mat
 
 
-def rho_nu_to_theta(rho, nu, rho_0):
-    ind = np.nonzero(np.sum(rho_0 > 0, axis=0) > 1)[0]
+def rho_nu_to_theta(rho, nu, mat_alphas):
+    ind = np.nonzero(np.sum(mat_alphas > 0, axis=0) > 1)[0]
     theta = []
     for j in ind:
-        ind_j = np.nonzero(rho_0[:, j])[0]
+        ind_j = np.nonzero(mat_alphas[:, j])[0]
         if len(ind_j) > 1:
             for k in ind_j:
                 theta.append(rho[k, j])
@@ -73,12 +74,12 @@ def rho_nu_to_theta(rho, nu, rho_0):
     return np.concatenate((np.array(theta), nu))
 
 
-def theta_to_rho_nu(theta, rho_0, d):
-    K, d_alphas = np.shape(rho_0)
+def theta_to_rho_nu(theta, mat_alphas, d):
+    K, d_alphas = np.shape(mat_alphas)
     rho = np.zeros((K, d_alphas))
     cpt = 0
     for j in range(d_alphas):
-        ind_j = np.nonzero(rho_0[:, j])[0]
+        ind_j = np.nonzero(mat_alphas[:, j])[0]
         if len(ind_j) == 1:
             rho[ind_j, j] = 1./d
         else:
@@ -110,7 +111,8 @@ def random_rho(alphas, d):
     d_alphas = len(betas)
     rho = np.zeros((K, d_alphas))
     for j_0, j in enumerate(betas):
-        rho[betas[j], j_0] = np.random.random(len(betas[j]))
+        rho[betas[j], j_0] = st.uniform.rvs(0.25, 0.5, len(betas[j]))
+        # st.uniform.rvs(size=len(betas[j]))
         rho[betas[j], j_0] /= d * np.sum(rho[betas[j], j_0])
 
     return rho

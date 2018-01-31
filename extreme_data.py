@@ -2,24 +2,28 @@ import numpy as np
 import clef_algo as clf
 
 
-def extreme_points_bin(x_rank, k):
+def extreme_points_bin(x_raw, k=None, R=None, eps=None, without_zeros=None):
     """
-        Input:
-            -data_rank = data after normalization
         Output:
-            -Binary matrix : kth largest points on each column
+            -Binary matrix : if k -> kth largest points on each column
+                             if R -> points above R
+        (Same output if columns are normalized to Pareto(1) distribution
+         and R=n_sample/(k + 1))
     """
-    n_sample, n_dim = np.shape(x_rank)
-    mat_rank = np.argsort(x_rank, axis=0)[::-1]
-    x_bin_0 = np.zeros((n_sample, n_dim))
-    for j in xrange(n_dim):
-        x_bin_0[mat_rank[:k, j], j] = 1
+    n_sample, n_dim = np.shape(x_raw)
+    if k:
+        mat_rank = np.argsort(x_raw, axis=0)[::-1]
+        x_bin = np.zeros((n_sample, n_dim))
+        for j in xrange(n_dim):
+            x_bin[mat_rank[:k, j], j] = 1
+    if R and not eps:
+        x_bin = 1.*(x_raw > R)
+    if eps:
+        x_bin = 1.*(x_raw[np.max(x_raw, axis=1) > R] > R*eps)
+    if without_zeros:
+        x_bin = x_bin[np.sum(x_bin, axis=1) > 0]
 
-    return x_bin_0
-
-
-def transform_to_pareto(X):
-    return (1 - np.exp(-X**-1))**-1
+    return x_bin
 
 
 def find_R(x_sim, eps):
@@ -41,16 +45,6 @@ def rank_transformation(x_raw):
     x_pareto = n_sample/x_rank
 
     return x_pareto
-
-
-def above_thresh_binary(data_extr, R):
-    """
-        Input:
-            -data_extr = matrix(n x d)
-        Output:
-            -binary data = matrix(n x d), X_ij = 1 if data_extr_ij > R
-    """
-    return 1.*(data_extr > R)
 
 
 def check_errors(charged_alphas, result_alphas, dim):

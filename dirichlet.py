@@ -1,60 +1,39 @@
 import numpy as np
-import scipy.special as sp
 import scipy.stats as st
 
 import generate_alphas as ga
 
 
-def pareto_gen(n, R):
-    x_par = 1 + np.random.pareto(1, n)
-    ind = np.nonzero(x_par > R)[0]
-    x_par = x_par[ind]
-    n_cpt = len(ind)
-    while n_cpt < n:
-        x_par = np.concatenate((x_par, 1 + np.random.pareto(1, n)))
-        ind = np.nonzero(x_par > R)[0]
-        x_par = x_par[ind]
-        n_cpt = len(ind)
-
-    return x_par
-
-
 def dirichlet_mixture(means, p, nu, lbda,
                       alphas, alphas_singlet,
-                      dim, n_sample):
-    alpha_c = ga.alphas_complement(alphas, dim)
-    X = np.zeros((n_sample, dim))
-    x_par = 1 + np.random.pareto(1, n_sample)
-    y_label = np.zeros(n_sample)
+                      d, n, R):
+    alphas_c = ga.alphas_complement(alphas, d)
+    alphas_c_s = ga.alphas_complement(alphas_singlet, d)
+    X = np.zeros((n, d))
+    y_label = np.zeros(n)
     p_norm = p/np.sum(p)
-    K_singlet = len(alphas_singlet)
-    for i in xrange(n_sample):
-        if np.random.random() < 1 - K_singlet/float(dim):
+    K_s = len(alphas_singlet)
+    for i in xrange(n):
+        x_par = st.pareto.rvs(1)
+        while x_par < R:
+            x_par = st.pareto.rvs(1)
+        if np.random.random() < 1 - K_s/float(d):
             k = int(np.nonzero(np.random.multinomial(1, p_norm))[0])
             y_label[i] = k
-            X[i, alpha_c[k]] = 1 + np.random.exponential(1/lbda[k],
-                                                         len(alpha_c[k]))
-            X[i, alphas[k]] = x_par[i] * np.random.dirichlet(nu[k] *
-                                                             means[k])
+            X[i, alphas_c[k]] = st.expon.rvs(1, 1/lbda[k], len(alphas_c[k]))
+            w = st.dirichlet.rvs(nu[k] * means[k])
+            while np.min(x_par * w) < 1:
+                w = st.dirichlet.rvs(nu[k] * means[k])
+            X[i, alphas[k]] = x_par * w
         else:
-            p_singlet = np.ones(K_singlet)/K_singlet
+            p_singlet = np.ones(K_s)/K_s
             k_s = int(np.nonzero(np.random.multinomial(1, p_singlet))[0])
             y_label[i] = len(alphas) + k_s
-            alpha_c_k = list(set(range(dim)) - set(alphas_singlet[k_s]))
-            X[i, alphas_singlet[k_s]] = x_par[i]
-            X[i, alpha_c_k] = 1 + np.random.exponential(1/lbda[k_s],
-                                                        len(alpha_c_k))
+            X[i, alphas_singlet[k_s]] = x_par
+            X[i, alphas_c_s[k_s]] = st.expon.rvs(1, 1/lbda[k_s],
+                                                 len(alphas_c_s[k_s]))
 
     return X, y_label
-
-
-def exp_distrib(x, lbda):
-    return lbda * np.exp(-lbda * (x - 1))
-
-
-def dirichlet(w, mean, nu):
-    return sp.gamma(nu) * np.prod(np.power(w, nu*mean - 1)) \
-        / np.prod(sp.gamma(nu * mean))
 
 
 def estimates_means_weights(x_extr, x_bin_k, alphas, alphas_singlet):

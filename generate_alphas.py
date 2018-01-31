@@ -58,3 +58,22 @@ def alphas_conversion(alphas):
     feats_dict = {feat: j for j, feat in enumerate(feats)}
 
     return [[feats_dict[j] for j in alpha] for alpha in alphas]
+
+
+def alphas_reconvert(alphas, feats):
+    return [[feats[j] for j in alpha] for alpha in alphas]
+
+
+def suppress_doublon(alphas):
+    new_list = []
+    for alpha in alphas:
+        subset = False
+        for alpha_t in alphas:
+            if len(alpha_t) > len(alpha):
+                if (len(set(alpha_t) -
+                        set(alpha)) == len(alpha_t) - len(alpha)):
+                    subset = True
+        if not subset:
+            new_list.append(alpha)
+
+    return new_list
