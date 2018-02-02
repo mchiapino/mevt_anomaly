@@ -36,7 +36,7 @@ alphas = np.load('results/airbus_alphas_' + str_file + '.npy')
 ind_extr = np.load('results/ind_extr_' + str_file + '.npy')
 feats = np.load('results/feats_' + str_file + '.npy')
 gamma_z = np.load('results/gamma_z_' + str_file + '.npy')[-1]
-check_list = np.load('results/check_list_' + str_file + '.npy')
+# check_list = np.load('results/check_list_' + str_file + '.npy')
 n_extr, K = np.shape(gamma_z)
 
 # Adjacency Matrix
@@ -46,7 +46,7 @@ for (i, j) in it.combinations(range(n_extr), 2):
     W[j, i] = W[i, j]
 
 # Spectral clustering
-K_spec = 30
+K_spec = 15
 L = np.diag(np.sum(W, axis=1)) - W
 eigval, eigvect = np.linalg.eigh(L)
 kmeans = KMeans(n_clusters=K_spec).fit(eigvect[:, :K_spec])
@@ -60,7 +60,7 @@ flights_parameters_clusters = reconstruct_alphas(alphas, feats, d_0)
 
 # Networkx visualisation
 G = nx.from_numpy_matrix(W)
-W_min = 0.  # np.mean(W)/2
+W_min = np.mean(W)/2
 W_thresh = W*(W > W_min)
 G_edges = []
 weights_edges = []

@@ -100,18 +100,15 @@ def complete_likelihood(theta, lbda, x_extr,
     for i in range(n_extr):
         l_hood_i = 0.
         for k in range(K):
-            r = np.sum(x_extr[i, alphas[k]])
-            w = x_extr[i, alphas[k]]/r
-            l_hood_i += (p[k] *
-                         r**-2 *
-                         st.dirichlet.pdf(w, means[k]*nu[k]) *
-                         np.prod(st.expon.pdf(x_extr[i, alphas_c[k]] - 1,
-                                              scale=lbda[k]**-1)))
+            l_hood_i += p[k] * dr.dirichlet_densities(x_extr[i],
+                                                      means[k], nu[k],
+                                                      lbda[k], alphas[k],
+                                                      alphas_c[k])
         for k_s in range(K_s):
             l_hood_i += (d**-1 *
                          x_extr[i, alphas_singlet[k_s]]**-2 *
                          np.prod(st.expon.pdf(x_extr[i, alphas_c_s[k_s]] - 1,
-                                              scale=lbda[k]**-1)))
+                                              scale=lbda[K+k_s]**-1)))
         if l_hood_i > 0:
             l_hood += np.log(l_hood_i)
 

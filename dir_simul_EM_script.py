@@ -13,7 +13,7 @@ import em_algo as em
 
 # General parameters
 d = 100
-n = int(1e6)
+n = int(1e5)
 K = 50
 R = 50.
 
@@ -52,20 +52,21 @@ np.save('results/y_label.npy', y_label)
 # y_label = np.load('results/y_label.npy')
 
 # Find sparse structure
-R = 10000
-ind_extr = np.sum(x_dir > R, axis=1) > 0
-x_extr = x_dir[ind_extr]
-x_bin_k = extr.extreme_points_bin(x_dir, R=R, without_zeros=True)
-
+R = 1e3
 # Damex
-alphas_damex, mass = dmx.damex_0(x_bin_k)
+eps_dmx = 0.3
+alphas_damex, mass = dmx.damex(x_dir, R, eps_dmx)
 alphas_dmx = clf.find_maximal_alphas(dmx.list_to_dict_size(alphas_damex))
 print map(len, extr.check_errors(true_alphas, alphas_dmx, d))
-
 # Clef
 kappa_min = 0.01
-alphas_clf = clf.clef_0(x_bin_k, kappa_min)
+alphas_clf = clf.clef(x_dir, R, kappa_min)
 print map(len, extr.check_errors(true_alphas, alphas_clf, d))
+
+# Extreme points
+R_extr = 5e3
+ind_extr = np.sum(x_dir, axis=1) > R_extr
+x_extr = x_dir[ind_extr]
 
 # Empirical rho
 alphas = true_alphas
@@ -99,7 +100,7 @@ theta_constraint = mc.Theta_constraint(mat_alphas, d)
 bds_r = [(0, 1./d) for i in range(len(theta_init[:-K]))]
 bds_n = [(0, None) for i in range(K)]
 bds = bds_r + bds_n
-n_loop = 30
+n_loop = 3
 
 # EM algorithm
 theta = np.copy(theta_init)

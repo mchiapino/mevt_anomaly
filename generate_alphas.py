@@ -2,7 +2,8 @@ import numpy as np
 import random as rd
 
 
-def gen_random_alphas(dim, nb_faces, max_size, p_geom, max_loops=1e4):
+def gen_random_alphas(dim, nb_faces, max_size, p_geom,
+                      max_loops=1e4, with_singlet=True):
     """
     Output:
         - random subsets of {1,...,dim}
@@ -28,12 +29,17 @@ def gen_random_alphas(dim, nb_faces, max_size, p_geom, max_loops=1e4):
     feats = list(set([j for alph in alphas for j in alph]))
     missing_feats = list(set(range(dim)) - set([j for alph in alphas
                                                 for j in alph]))
-    # if len(missing_feats) > 1:
-    #     alphas.append(missing_feats)
-    # if len(missing_feats) == 1:
-    #     missing_feats.append(list(set(range(dim)) - set(missing_feats))[0])
-    #     alphas.append(missing_feats)
-    alphas_singlet = [[j] for j in missing_feats]
+    alphas_singlet = []
+    if len(missing_feats) > 0:
+        if with_singlet:
+            alphas_singlet = [[j] for j in missing_feats]
+        else:
+            if len(missing_feats) > 1:
+                alphas.append(missing_feats)
+            if len(missing_feats) == 1:
+                missing_feats.append(list(set(range(dim)) -
+                                          set(missing_feats))[0])
+                alphas.append(missing_feats)
 
     return alphas, feats, alphas_singlet
 

@@ -27,29 +27,25 @@ for j in range(d_0):
 # Rank transformation, for each margin (column) V_i = n/(rank(X_i) + 1)
 x_rank_0 = extr.rank_transformation(x_doubled)
 
+# Sparse support
+R = 1e3
 # # Damex
-# R = 750
-# eps_dmx = 0.8
-# x_bin_dmx = extr.extreme_points_bin(x_rank_0,
-#                                     R=R, eps=eps_dmx,
-#                                     without_zeros=True)
-# alphas_0, mass = dmx.damex_0(x_bin_dmx)
-# K_0 = 20
+# eps_dmx = 0.7
+# alphas_0, mass = dmx.damex(x_rank_0, R, eps_dmx)
+# K_0 = 40
 # alphas_dmx = clf.find_maximal_alphas(dmx.list_to_dict_size(alphas_0[:K_0]))
-# str_file = 'dmx_' + str(R) + '_' + str(kappa_min) + '_' + str(K_0)
-
+# str_file = 'dmx_' + str(R) + '_' + str(eps_dmx) + '_' + str(K_0)
 # Clef
-R = 500
-kappa_min = 0.4
-x_bin_clf = extr.extreme_points_bin(x_rank_0, R=R, without_zeros=True)
-alphas_clf = clf.clef_0(x_bin_clf, kappa_min)
+kappa_min = 0.3
+alphas_clf = clf.clef(x_rank_0, R, kappa_min)
 str_file = 'clf_' + str(R) + '_' + str(kappa_min)
 
-# Keeps only features that appear in the alphas
+# Extreme points; Keeps only features that appear in the alphas
 feats = list(set([j for alph in alphas_clf for j in alph]))
 d = len(feats)
 x_rank = x_rank_0[:, feats]
-ind_extr = np.sum(x_rank > R, axis=1) > 1
+R_extr = 2e3
+ind_extr = np.sum(x_rank, axis=1) > R_extr
 x_extr = x_rank[ind_extr]
 alphas = ga.alphas_conversion(alphas_clf)
 mat_alphas = ga.alphas_matrix(alphas)

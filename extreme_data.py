@@ -78,3 +78,84 @@ def check_errors(charged_alphas, result_alphas, dim):
     misseds = [charged_alphas[i] for i in ind_misseds]
 
     return founds, misseds, falses_pure, exct_subsets, exct_supsets
+
+
+def r(x_bin, alpha, k):
+    """Dependence function
+
+
+    Parameters
+    ----------
+    x_bin : ndarray, shape (n_sample, n_dim)
+    alpha : list
+        List of features
+    k : int
+
+    Returns
+    -------
+    r : float
+
+
+    """
+    return np.sum(np.sum(x_bin[:, alpha], axis=1) == len(alpha))/float(k)
+
+
+def rhos_alpha_pairs(x_bin, alpha, k):
+    """Computes rho(i,j) for each (i,j) in alpha.
+
+
+    Parameters
+    ----------
+    x_bin : ndarray, shape (n_sample, n_dim)
+    alpha : list
+        List of features
+    k : int
+
+    Returns
+    -------
+    rhos_alpha : dict
+
+
+    """
+    rhos_alpha = {}
+    for (i, j) in it.combinations(alpha, 2):
+        rhos_alpha[i, j] = r(x_bin, [i, j], k)
+
+    return rhos_alpha
+
+
+def partial_matrix(x_bin_base, x_bin_partial, j):
+    """Returns x_bin_base with its jth colomn replaced by the jth column of
+    x_bin_partial.
+
+
+    Parameters
+    ----------
+    x_bin_base : ndarray, shape (n_sample, n_dim)
+    x_bin_partial : ndarray, shape (n_sample, n_dim)
+    j : int
+
+    Returns
+    -------
+    x_bin_copy : ndarray, shape (n_sample, n_dim)
+
+
+    """
+    x_bin_copy = np.copy(x_bin_base)
+    x_bin_copy[:, j] = x_bin_partial[:, j]
+
+    return x_bin_copy
+
+
+def r_partial_derv_centered(x_bin_k, x_bin_kp, x_bin_km, alpha, k):
+    """
+        Output:
+            - dictionary : {j: derivative of r in j}
+    """
+    r_p = {}
+    for j in alpha:
+        x_r = partial_matrix(x_bin_k, x_bin_kp, j)
+        x_l = partial_matrix(x_bin_k, x_bin_km, j)
+        r_p[j] = 0.5*k**0.25*(r(x_r, alpha, k) - r(x_l, alpha, k))
+
+    return r_p
