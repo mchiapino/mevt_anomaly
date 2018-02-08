@@ -3,3 +3,4 @@
 *.p
 results/
 trash.py
+*.png

@@ -10,15 +10,14 @@ import generate_alphas as ga
 
 
 class Theta_constraint:
-    def __init__(self, mat_alphas, d):
-        self.mat_alphas, self.d = mat_alphas, d
+    def __init__(self, alphas, d):
+        self.alphas, self.d = alphas, d
 
     def __call__(self, theta):
-        mat_alphas, d = self.mat_alphas, self.d
-        K, dim = np.shape(mat_alphas)
-        rho, nu = theta_to_rho_nu(theta, mat_alphas, d)
+        alphas, d = self.alphas, self.d
+        rho, nu = theta_to_rho_nu(theta, alphas, d)
         new_rho = rho / (d * np.sum(rho, axis=0))
-        new_theta = rho_nu_to_theta(new_rho, nu, mat_alphas)
+        new_theta = rho_nu_to_theta(new_rho, nu, alphas)
 
         return new_theta
 
@@ -62,7 +61,8 @@ def means_to_mat(means_list, alphas):
     return means_mat
 
 
-def rho_nu_to_theta(rho, nu, mat_alphas):
+def rho_nu_to_theta(rho, nu, alphas):
+    mat_alphas = ga.alphas_matrix(alphas)
     ind = np.nonzero(np.sum(mat_alphas > 0, axis=0) > 1)[0]
     theta = []
     for j in ind:
@@ -74,7 +74,8 @@ def rho_nu_to_theta(rho, nu, mat_alphas):
     return np.concatenate((np.array(theta), nu))
 
 
-def theta_to_rho_nu(theta, mat_alphas, d):
+def theta_to_rho_nu(theta, alphas, d):
+    mat_alphas = ga.alphas_matrix(alphas)
     K, d_alphas = np.shape(mat_alphas)
     rho = np.zeros((K, d_alphas))
     cpt = 0

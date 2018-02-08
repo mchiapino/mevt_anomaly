@@ -28,102 +28,122 @@ for j in range(d_0):
 x_rank_0 = extr.rank_transformation(x_doubled)
 
 # Sparse support
-R = 1e3
-# # Damex
-# eps_dmx = 0.7
-# alphas_0, mass = dmx.damex(x_rank_0, R, eps_dmx)
-# K_0 = 40
-# alphas_dmx = clf.find_maximal_alphas(dmx.list_to_dict_size(alphas_0[:K_0]))
-# str_file = 'dmx_' + str(R) + '_' + str(eps_dmx) + '_' + str(K_0)
+R = 50
+# Damex
+eps_dmx = 0.5
+alphas_0, mass = dmx.damex(x_rank_0, R, eps_dmx)
+K_dmx = 50
+alphas_dmx = clf.find_maximal_alphas(dmx.list_to_dict_size(alphas_0[:K_dmx]))
+dmx_file = 'dmx_' + str(eps_dmx) + '_' + str(K_dmx)
 # Clef
 kappa_min = 0.3
 alphas_clf = clf.clef(x_rank_0, R, kappa_min)
-str_file = 'clf_' + str(R) + '_' + str(kappa_min)
+clf_file = 'clf_' + str(kappa_min)
 
-# Extreme points; Keeps only features that appear in the alphas
-feats = list(set([j for alph in alphas_clf for j in alph]))
+# Extreme points; Only keeps features that appear in the alphas
+alphas_0 = alphas_dmx
+feats = list(set([j for alph in alphas_0 for j in alph]))
 d = len(feats)
 x_rank = x_rank_0[:, feats]
-R_extr = 2e3
+R_extr = 3e3
 ind_extr = np.sum(x_rank, axis=1) > R_extr
 x_extr = x_rank[ind_extr]
-alphas = ga.alphas_conversion(alphas_clf)
+alphas = ga.alphas_conversion(alphas_0)
 mat_alphas = ga.alphas_matrix(alphas)
 alphas_singlet = []
 K = len(alphas)
 K_tot = K + len(alphas_singlet)
 
-# Empirical rho
-means_emp = [np.mean(em.project_on_simplex(x_extr, alpha), axis=0)
-             for alpha in alphas]
-weights_emp = np.ones(K)/K
-rho_emp = mc.means_weights_to_rho(means_emp, weights_emp, alphas)
+# # Extreme points with singlets
+# alphas = alphas_clf
+# K = len(alphas)
+# d = 2*d_0
+# feats = list(set([j for alph in alphas for j in alph]))
+# alphas_singlet = [[j] for j in list(set(range(2*d_0)) - set(feats))]
+# K_tot = K + len(alphas_singlet)
+# R_extr = 1e3
+# ind_extr = np.sum(x_rank_0, axis=1) > R_extr
+# x_extr = x_rank_0[ind_extr]
 
-# Rho that verify moment constraint
-rho_init = mc.project_rho(rho_emp, d)
+# # Empirical rho
+# means_emp = [np.mean(em.project_on_simplex(x_extr, alpha), axis=0)
+#              for alpha in alphas]
+# weights_emp = np.ones(K)/K
+# rho_emp = mc.means_weights_to_rho(means_emp, weights_emp, alphas)
 
-# Init
-nu_init = 10*np.ones(K)
-theta_init = mc.rho_nu_to_theta(rho_init, nu_init, mat_alphas)
-lbda_init = 0.01*np.ones(K_tot)
-gamma_z_init = em.compute_gamma_z(x_extr, alphas, alphas_singlet,
-                                  theta_init, mat_alphas, lbda_init)
-Q_tot = em.Q_tot(theta_init, lbda_init, gamma_z_init, x_extr,
-                 alphas, alphas_singlet, mat_alphas)
-cplt_lhood = em.complete_likelihood(theta_init, lbda_init, x_extr,
-                                    alphas, alphas_singlet, mat_alphas)
+# # Rho that verify moment constraint
+# rho_init = mc.project_rho(rho_emp, d)
 
-# Constraints
-theta_constraint = mc.Theta_constraint(mat_alphas, d)
+# # Init
+# nu_init = 10*np.ones(K)
+# theta_init = mc.rho_nu_to_theta(rho_init, nu_init, alphas)
+# lbda_init = 1*np.ones(K_tot)
+# noise_func = 'expon'
+# gamma_z_init = em.compute_gamma_z(x_extr, theta_init, lbda_init,
+#                                   alphas, alphas_singlet,
+#                                   noise_func)
+# Q_tot = em.Q_tot(theta_init, lbda_init, x_extr, gamma_z_init,
+#                  alphas, alphas_singlet,
+#                  noise_func)
+# cplt_lhood = em.complete_likelihood(x_extr, theta_init, lbda_init,
+#                                     alphas, alphas_singlet,
+#                                     noise_func)
 
-# Bounds
-bds_r = [(0, 1./d) for i in range(len(theta_init[:-K]))]
-bds_n = [(0, 100) for i in range(K)]
-bds = bds_r + bds_n
-n_loop = 20
+# # Constraints
+# theta_constraint = mc.Theta_constraint(alphas, d)
 
-# EM algorithm
-gamma_z = np.copy(gamma_z_init)
-lbda = np.copy(lbda_init)
-theta = np.copy(theta_init)
-gamma_z_list = [gamma_z]
-lbda_list = [lbda]
-theta_list = [theta]
-check_list = [(-Q_tot, cplt_lhood)]
-cpt = 0
-Q_diff = 2.
-while Q_diff > 1. and cpt < n_loop:
-    # E-step
-    gamma_z = em.compute_gamma_z(x_extr, alphas, alphas_singlet,
-                                 theta, mat_alphas, lbda)
-    gamma_z_list.append(gamma_z)
-    # M-step
-    # Minimize in lambda
-    lbda = em.compute_new_lambda(x_extr, gamma_z,
-                                 alphas, alphas_singlet)
-    lbda_list.append(lbda)
-    # Minimize in theta
-    theta = ms.diffev(em.Q, theta,
-                      args=(mat_alphas, x_extr, gamma_z, alphas),
-                      bounds=bds,
-                      constraints=theta_constraint)
-    theta_list.append(theta)
-    # New likelihood
-    Q_tot_ = em.Q_tot(theta, lbda, gamma_z, x_extr,
-                      alphas, alphas_singlet, mat_alphas)
-    cplt_lhood = em.complete_likelihood(theta, lbda,
-                                        x_extr,
-                                        alphas, alphas_singlet,
-                                        mat_alphas)
-    Q_diff = abs(Q_tot_ - Q_tot)
-    Q_tot = Q_tot_
-    check_list.append((-Q_tot, cplt_lhood))
-    cpt += 1
+# # Bounds
+# bds_r = [(0, 1./d) for i in range(len(theta_init[:-K]))]
+# bds_n = [(0, 100) for i in range(K)]
+# bds = bds_r + bds_n
+# n_loop = 10
 
-# Save results
-if not os.path.exists('results/'):
-    os.makedirs('results/')
-np.save('results/alphas_' + str_file + '.npy', alphas)
-np.save('results/feats_' + str_file + '.npy', feats)
-np.save('results/ind_extr_' + str_file + '.npy', ind_extr)
-np.save('results/gamma_z_' + str_file + '.npy', gamma_z)
+# # EM algorithm
+# gamma_z = np.copy(gamma_z_init)
+# lbda = np.copy(lbda_init)
+# theta = np.copy(theta_init)
+# gamma_z_list = [gamma_z]
+# lbda_list = [lbda]
+# theta_list = [theta]
+# check_list = [(-Q_tot, cplt_lhood)]
+# cpt = 0
+# crit_diff = 2.
+# while crit_diff > 0.1 and cpt < n_loop:
+#     # E-step
+#     gamma_z = em.compute_gamma_z(x_extr, theta, lbda,
+#                                  alphas, alphas_singlet,
+#                                  noise_func)
+#     gamma_z_list.append(gamma_z)
+#     # M-step
+#     # Minimize in lambda
+#     if noise_func == 'expon':
+#         lbda = em.compute_new_lambda(x_extr, gamma_z,
+#                                      alphas, alphas_singlet)
+#     if noise_func == 'pareto':
+#         lbda = em.compute_new_pareto(x_extr, gamma_z,
+#                                      alphas, alphas_singlet)
+#     lbda_list.append(lbda)
+#     # Minimize in theta
+#     theta = ms.diffev(em.Q, theta,
+#                       args=(x_extr, gamma_z, alphas),
+#                       bounds=bds,
+#                       constraints=theta_constraint)
+#     theta_list.append(theta)
+#     # New likelihood
+#     Q_tot_ = em.Q_tot(theta, lbda, x_extr, gamma_z,
+#                       alphas, alphas_singlet,
+#                       noise_func)
+#     cplt_lhood_ = em.complete_likelihood(x_extr, theta, lbda,
+#                                          alphas, alphas_singlet,
+#                                          noise_func)
+#     crit_diff = abs(Q_tot_ - Q_tot) + abs(cplt_lhood_ - cplt_lhood)
+#     Q_tot = Q_tot_
+#     cplt_lhood = cplt_lhood_
+#     print Q_tot, cplt_lhood
+#     check_list.append((-Q_tot, cplt_lhood))
+#     cpt += 1
+
+# # Save results
+# if not os.path.exists('results/'):
+#     os.makedirs('results/')
+# np.save('results/gamma_z.npy', gamma_z)

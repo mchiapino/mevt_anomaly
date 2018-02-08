@@ -9,7 +9,7 @@ import networkx as nx
 
 
 def clef(x_norm, R, kappa_min):
-    x_bin = x_norm[np.max(x_norm, axis=1) > R] > R
+    x_bin = 1.*(x_norm > R)
     alphas_dict = find_alphas(x_bin, kappa_min)
     alphas = find_maximal_alphas(alphas_dict)
 

@@ -32,7 +32,7 @@ def damex_0(x_bin):
 
 
 def damex(x_norm, R, eps):
-    x_damex = x_norm[np.max(x_norm, axis=1) > R] > R*eps
+    x_damex = 1.*(x_norm[np.max(x_norm, axis=1) > R] > R*eps)
 
     return damex_0(x_damex)
 

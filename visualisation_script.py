@@ -2,6 +2,11 @@ import numpy as np
 from numpy import genfromtxt
 import itertools as it
 
+import generate_alphas as ga
+import extreme_data as extr
+import damex_algo as dmx
+import clef_algo as clf
+
 from sklearn.cluster import KMeans
 
 import networkx as nx
@@ -29,24 +34,53 @@ x = genfromtxt('Data_Anne.csv', delimiter=',')
 x = x[1:, 1:]
 n, d_0 = np.shape(x)
 
+# Each feature is doubled, separating points above and below the mean
+mean = np.mean(x, axis=0)
+var = x - mean
+x_doubled = np.zeros((n, 2*d_0))
+for j in range(d_0):
+    x_doubled[var[:, j] > 0, j] = var[var[:, j] > 0, j]
+    x_doubled[var[:, j] < 0, d_0 + j] = - var[var[:, j] < 0, j]
+
+# Rank transformation, for each margin (column) V_i = n/(rank(X_i) + 1)
+x_rank_0 = extr.rank_transformation(x_doubled)
+
 # EM results
-str_file = 'clf_' + str(500) + '_' + str(0.4)
-# str_file = 'dmx_' + str(500) + '_' + str(0.5) + '_' + str(30)
-alphas = np.load('results/airbus_alphas_' + str_file + '.npy')
-ind_extr = np.load('results/ind_extr_' + str_file + '.npy')
-feats = np.load('results/feats_' + str_file + '.npy')
-gamma_z = np.load('results/gamma_z_' + str_file + '.npy')[-1]
-# check_list = np.load('results/check_list_' + str_file + '.npy')
-n_extr, K = np.shape(gamma_z)
+R = 50
+noise_func = 'expon/'
+# Damex
+eps_dmx = 0.5
+K_dmx = 50
+dmx_file = 'dmx_' + str(R) + '_' + str(eps_dmx) + '_' + str(K_dmx)
+alphas_0, mass = dmx.damex(x_rank_0, R, eps_dmx)
+alphas_dmx = clf.find_maximal_alphas(dmx.list_to_dict_size(alphas_0[:K_dmx]))
+# # Clef
+# kappa_min = 0.2
+# clf_file = 'clf_' + str(R) + '_' + str(kappa_min)
+# alphas_clf = clf.clef(x_rank_0, R, kappa_min)
+# Keeps only the data involved with alphas
+alphas_1 = alphas_dmx
+feats = list(set([j for alph in alphas_1 for j in alph]))
+d = len(feats)
+x_rank = x_rank_0[:, feats]
+R_extr = 3e3
+ind_extr = np.sum(x_rank, axis=1) > R_extr
+x_extr = x_rank[ind_extr]
+alphas = ga.alphas_conversion(alphas_1)
+alphas_singlet = []
+K = len(alphas)
+K_tot = K + len(alphas_singlet)
 
 # Adjacency Matrix
+gamma_z = np.load('results/gamma_z.npy')
+n_extr, K = np.shape(gamma_z)
 W = np.zeros((n_extr, n_extr))
 for (i, j) in it.combinations(range(n_extr), 2):
     W[i, j] = np.sum(gamma_z[i] * gamma_z[j])
     W[j, i] = W[i, j]
 
 # Spectral clustering
-K_spec = 15
+K_spec = 20
 L = np.diag(np.sum(W, axis=1)) - W
 eigval, eigvect = np.linalg.eigh(L)
 kmeans = KMeans(n_clusters=K_spec).fit(eigvect[:, :K_spec])
@@ -58,37 +92,78 @@ flights_clusters = [[flights_ind[j] for j in np.nonzero(labels == k)[0]]
                     for k in range(K_spec)]
 flights_parameters_clusters = reconstruct_alphas(alphas, feats, d_0)
 
-# Networkx visualisation
-G = nx.from_numpy_matrix(W)
-W_min = np.mean(W)/2
-W_thresh = W*(W > W_min)
-G_edges = []
-weights_edges = []
-for edge in G.edges():
-    if W_thresh[edge] > W_min:
-        G_edges.append(edge)
-        weights_edges.append(W_thresh[edge])
-G_visu = nx.from_numpy_matrix(W_thresh)
+# Networkx visualisation with agglomerated points
+W_clusters = np.zeros((K_spec, K_spec))
+for k_0 in range(K_spec-1):
+    for k_1 in range(k_0+1, K_spec):
+        inds_k_0 = np.nonzero(labels == k_0)[0]
+        inds_k_1 = np.nonzero(labels == k_1)[0]
+        W_clusters[k_0, k_1] = np.sum(W[inds_k_0, :][:, inds_k_1])
+        W_clusters[k_1, k_0] = W_clusters[k_0, k_1]
+G_clusters = nx.from_numpy_matrix(W_clusters)
+node_color = []
+for node in G_clusters.nodes():
+    inds = np.nonzero(labels == node)[0]
+    node_color.append(np.sum(W[inds, :][:, inds])/np.sum(inds))
+G_clust_edges = []
+w_edges = []
+for edge in G_clusters.edges():
+    if W_clusters[edge] > 0.:
+        G_clust_edges.append(edge)
+        w_edges.append(W_clusters[edge])
+node_size = [np.sum(labels == k) for k in range(K_spec)]
 cmap = plt.get_cmap(name='gnuplot_r')
 cmaplist = [cmap(i) for i in range(cmap.N)]
 new_cmap = cmap.from_list('Custom cmap', cmaplist, cmap.N)
 bounds = np.linspace(0, K_spec, K_spec+1)
 norm = mlc.BoundaryNorm(bounds, cmap.N)
-labels_dict = {i: str(labels[i])  # + ':' + str(flights_ind[i])
-               for i in range(n_extr)}
+labels_dict = {k: str(node_size[k]) for k in range(K_spec)}
 
-nx.draw(G_visu,
-        edgelist=G_edges,
-        node_size=600,
-        node_color=labels/float(K_spec),
+nx.draw(G_clusters,
+        node_size=100*np.array(node_size),
+        node_color=node_color,
         alpha=0.5,
-        cmap=new_cmap,
-        edge_color=np.array(weights_edges),
+        cmap=cmap,
+        edge_color=np.array(w_edges),
         edge_cmap=plt.get_cmap(name='Reds'),
-        # width=10*np.array(weights_edges),
         font_size=8,
         labels=labels_dict)
 sm = plt.cm.ScalarMappable(cmap=new_cmap, norm=norm)
 sm._A = []
 plt.colorbar(sm)
 plt.show()
+
+# # Networkx visualisation 0
+# G = nx.from_numpy_matrix(W)
+# W_min = np.mean(W)/2
+# W_thresh = W*(W > W_min)
+# G_edges = []
+# weights_edges = []
+# for edge in G.edges():
+#     if W_thresh[edge] > W_min:
+#         G_edges.append(edge)
+#         weights_edges.append(W_thresh[edge])
+# G_visu = nx.from_numpy_matrix(W_thresh)
+# cmap = plt.get_cmap(name='gnuplot_r')
+# cmaplist = [cmap(i) for i in range(cmap.N)]
+# new_cmap = cmap.from_list('Custom cmap', cmaplist, cmap.N)
+# bounds = np.linspace(0, K_spec, K_spec+1)
+# norm = mlc.BoundaryNorm(bounds, cmap.N)
+# labels_dict = {i: str(labels[i])  # + ':' + str(flights_ind[i])
+#                for i in range(n_extr)}
+
+# nx.draw(G_visu,
+#         edgelist=G_edges,
+#         node_size=600,
+#         node_color=labels/float(K_spec),
+#         alpha=0.5,
+#         cmap=new_cmap,
+#         edge_color=np.array(weights_edges),
+#         edge_cmap=plt.get_cmap(name='Reds'),
+#         # width=10*np.array(weights_edges),
+#         font_size=8,
+#         labels=labels_dict)
+# sm = plt.cm.ScalarMappable(cmap=new_cmap, norm=norm)
+# sm._A = []
+# plt.colorbar(sm)
+# plt.show()

@@ -1,4 +1,5 @@
 import numpy as np
+import itertools as it
 import mystic.solvers as ms
 import time
 
@@ -13,12 +14,12 @@ import em_algo as em
 
 # General parameters
 d = 100
-n = int(1e5)
+n = int(3e3)
 K = 50
-R = 50.
+R_dir = 1e3
 
 # Generate alphas
-max_size = 6
+max_size = 8
 p_geom = 0.3
 true_alphas, feats, alphas_singlet = ga.gen_random_alphas(d,
                                                           K,
@@ -36,12 +37,14 @@ K_tot = K + len(alphas_singlet)
 rho_0 = mc.random_rho(true_alphas, d)
 means_0, weights_0 = mc.rho_to_means_weights(rho_0)
 nu_0 = 20*np.ones(K)
-lbda_0 = 5*np.ones(K_tot)
-x_dir, y_label = dr.dirichlet_mixture(means_0, weights_0, nu_0,
-                                      lbda_0,
+lbda_0 = 1*np.ones(K_tot)
+noise_func = 'expon'
+t_0 = time.clock()
+x_dir, y_label = dr.dirichlet_mixture(means_0, weights_0, nu_0, lbda_0,
                                       true_alphas, alphas_singlet,
-                                      d, n, R)
-theta_0 = mc.rho_nu_to_theta(rho_0, nu_0, rho_0)
+                                      d, n, noise_func, R_dir)
+t_dir = time.clock() - t_0
+theta_0 = mc.rho_nu_to_theta(rho_0, nu_0, true_alphas)
 np.save('results/theta_0.npy', theta_0)
 np.save('results/lbda_0.npy', lbda_0)
 np.save('results/x_dir.npy', x_dir)
@@ -52,11 +55,12 @@ np.save('results/y_label.npy', y_label)
 # y_label = np.load('results/y_label.npy')
 
 # Find sparse structure
-R = 1e3
+R = 1e2
 # Damex
 eps_dmx = 0.3
-alphas_damex, mass = dmx.damex(x_dir, R, eps_dmx)
-alphas_dmx = clf.find_maximal_alphas(dmx.list_to_dict_size(alphas_damex))
+K_dmx = K
+alphas_dmx, mass = dmx.damex(x_dir, R, eps_dmx)
+alphas_dmx = clf.find_maximal_alphas(dmx.list_to_dict_size(alphas_dmx[:K_dmx]))
 print map(len, extr.check_errors(true_alphas, alphas_dmx, d))
 # Clef
 kappa_min = 0.01
@@ -64,13 +68,12 @@ alphas_clf = clf.clef(x_dir, R, kappa_min)
 print map(len, extr.check_errors(true_alphas, alphas_clf, d))
 
 # Extreme points
-R_extr = 5e3
+R_extr = 1e3
 ind_extr = np.sum(x_dir, axis=1) > R_extr
 x_extr = x_dir[ind_extr]
 
 # Empirical rho
 alphas = true_alphas
-mat_alphas = ga.alphas_matrix(alphas)
 means_emp = [np.mean(em.project_on_simplex(x_extr, alpha), axis=0)
              for alpha in alphas]
 weights_emp = np.ones(K)/K
@@ -81,20 +84,23 @@ rho_init = mc.project_rho(rho_emp, d)
 
 # Init
 nu_init = 10*np.ones(K)
-theta_init = mc.rho_nu_to_theta(rho_init, nu_init, mat_alphas)
-lbda_init = 1*np.ones(K_tot)
+theta_init = mc.rho_nu_to_theta(rho_init, nu_init, alphas)
+lbda_init = 2*np.ones(K_tot)
 print 'rho err init: ', np.sqrt(np.sum((rho_init - rho_0)**2))
 print 'nu err init: ', np.sqrt(np.sum((nu_init - nu_0)**2))
 print 'lbda err init: ', np.sqrt(np.sum((lbda_init - lbda_0)**2))
-gamma_z_init = em.compute_gamma_z(x_extr, alphas, alphas_singlet,
-                                  theta_init, mat_alphas, lbda_init)
-Q_tot = em.Q_tot(theta_init, lbda_init, gamma_z_init, x_extr,
-                 alphas, alphas_singlet, mat_alphas)
-cplt_lhood = em.complete_likelihood(theta_init, lbda_init, x_extr,
-                                    alphas, alphas_singlet, mat_alphas)
+gamma_z_init = em.compute_gamma_z(x_extr, theta_init, lbda_init,
+                                  alphas, alphas_singlet,
+                                  noise_func)
+Q_tot = em.Q_tot(theta_init, lbda_init, x_extr, gamma_z_init,
+                 alphas, alphas_singlet,
+                 noise_func)
+cplt_lhood = em.complete_likelihood(x_extr, theta_init, lbda_init,
+                                    alphas, alphas_singlet,
+                                    noise_func)
 
 # Constraints
-theta_constraint = mc.Theta_constraint(mat_alphas, d)
+theta_constraint = mc.Theta_constraint(alphas, d)
 
 # Bounds
 bds_r = [(0, 1./d) for i in range(len(theta_init[:-K]))]
@@ -111,35 +117,41 @@ lbda_list = [lbda]
 theta_list = [theta]
 check_list = [(-Q_tot, cplt_lhood)]
 cpt = 0
-Q_diff = 2.
-while Q_diff > 1. and cpt < n_loop:
+crit_diff = 2.
+while crit_diff > 0.1 and cpt < n_loop:
     # E-step
-    gamma_z = em.compute_gamma_z(x_extr, alphas, alphas_singlet,
-                                 theta, mat_alphas, lbda)
+    gamma_z = em.compute_gamma_z(x_extr, theta, lbda,
+                                 alphas, alphas_singlet,
+                                 noise_func)
     gamma_z_list.append(gamma_z)
     # M-step
     # Minimize in lambda
-    lbda = em.compute_new_lambda(x_extr, gamma_z,
-                                 alphas, alphas_singlet)
+    if noise_func == 'expon':
+        lbda = em.compute_new_lambda(x_extr, gamma_z,
+                                     alphas, alphas_singlet)
+    if noise_func == 'pareto':
+        lbda = em.compute_new_pareto(x_extr, gamma_z,
+                                     alphas, alphas_singlet)
     lbda_list.append(lbda)
     # Minimize in theta
     theta = ms.diffev(em.Q, theta,
-                      args=(mat_alphas, x_extr, gamma_z, alphas),
+                      args=(x_extr, gamma_z, alphas),
                       bounds=bds,
                       constraints=theta_constraint)
     theta_list.append(theta)
-    rho, nu = mc.theta_to_rho_nu(theta, mat_alphas, d)
+    rho, nu = mc.theta_to_rho_nu(theta, alphas, d)
     print 'rho err: ', np.sqrt(np.sum((rho - rho_0)**2))
     print 'nu err: ', np.sqrt(np.sum((nu - nu_0)**2))
     print 'lbda err: ', np.sqrt(np.sum((lbda - lbda_0)**2))
     # New likelihood
-    Q_tot_ = em.Q_tot(theta, lbda, gamma_z, x_extr,
-                      alphas, alphas_singlet, mat_alphas)
-    cplt_lhood = em.complete_likelihood(theta, lbda,
-                                        x_extr,
-                                        alphas, alphas_singlet,
-                                        mat_alphas)
-    # Q_diff = abs(Q_tot_ - Q_tot)
+    Q_tot_ = em.Q_tot(theta, lbda, x_extr, gamma_z,
+                      alphas, alphas_singlet,
+                      noise_func)
+    cplt_lhood_ = em.complete_likelihood(x_extr, theta, lbda,
+                                         alphas, alphas_singlet,
+                                         noise_func)
+    # crit_diff = abs(Q_tot_ - Q_tot) + abs(cplt_lhood_ - cplt_lhood)
     Q_tot = Q_tot_
+    cplt_lhood = cplt_lhood_
     check_list.append((-Q_tot, cplt_lhood))
     cpt += 1

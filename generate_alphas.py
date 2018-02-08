@@ -51,7 +51,7 @@ def alphas_complement(alphas, dim):
 def alphas_matrix(alphas):
     K = len(alphas)
     feats = list(set([j for alph in alphas for j in alph]))
-    d_max = max(feats)
+    d_max = int(max(feats))
     mat_alphas = np.zeros((K, d_max+1))
     for k, alpha in enumerate(alphas):
         mat_alphas[k, alpha] = 1
@@ -68,18 +68,3 @@ def alphas_conversion(alphas):
 
 def alphas_reconvert(alphas, feats):
     return [[feats[j] for j in alpha] for alpha in alphas]
-
-
-def suppress_doublon(alphas):
-    new_list = []
-    for alpha in alphas:
-        subset = False
-        for alpha_t in alphas:
-            if len(alpha_t) > len(alpha):
-                if (len(set(alpha_t) -
-                        set(alpha)) == len(alpha_t) - len(alpha)):
-                    subset = True
-        if not subset:
-            new_list.append(alpha)
-
-    return new_list
