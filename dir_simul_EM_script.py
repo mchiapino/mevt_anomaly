@@ -13,10 +13,10 @@ import em_algo as em
 
 
 # General parameters
-d = 100
-n = int(3e3)
-K = 50
-R_dir = 1e3
+d = 20
+n = int(1e3)
+K = 10
+R_dir = 1e2
 
 # Generate alphas
 max_size = 8
@@ -37,7 +37,7 @@ K_tot = K + len(alphas_singlet)
 rho_0 = mc.random_rho(true_alphas, d)
 means_0, weights_0 = mc.rho_to_means_weights(rho_0)
 nu_0 = 20*np.ones(K)
-lbda_0 = 1*np.ones(K_tot)
+lbda_0 = 1.*np.ones(K_tot)
 noise_func = 'expon'
 t_0 = time.clock()
 x_dir, y_label = dr.dirichlet_mixture(means_0, weights_0, nu_0, lbda_0,
@@ -54,21 +54,21 @@ np.save('results/y_label.npy', y_label)
 # x_dir = np.load('results/x_dir.npy')
 # y_label = np.load('results/y_label.npy')
 
-# Find sparse structure
-R = 1e2
-# Damex
-eps_dmx = 0.3
-K_dmx = K
-alphas_dmx, mass = dmx.damex(x_dir, R, eps_dmx)
-alphas_dmx = clf.find_maximal_alphas(dmx.list_to_dict_size(alphas_dmx[:K_dmx]))
-print map(len, extr.check_errors(true_alphas, alphas_dmx, d))
-# Clef
-kappa_min = 0.01
-alphas_clf = clf.clef(x_dir, R, kappa_min)
-print map(len, extr.check_errors(true_alphas, alphas_clf, d))
+# # Find sparse structure
+# R = 50
+# # Damex
+# eps_dmx = 0.3
+# K_dmx = K
+# alphas_dmx, mass = dmx.damex(x_dir, R, eps_dmx)
+# alphas_dmx = clf.find_maximal_alphas(dmx.list_to_dict_size(alphas_dmx[:K_dmx]))
+# print map(len, extr.check_errors(true_alphas, alphas_dmx, d))
+# # Clef
+# kappa_min = 0.01
+# alphas_clf = clf.clef(x_dir, R, kappa_min)
+# print map(len, extr.check_errors(true_alphas, alphas_clf, d))
 
 # Extreme points
-R_extr = 1e3
+R_extr = 1e2
 ind_extr = np.sum(x_dir, axis=1) > R_extr
 x_extr = x_dir[ind_extr]
 
@@ -83,9 +83,9 @@ rho_emp = mc.means_weights_to_rho(means_emp, weights_emp, alphas)
 rho_init = mc.project_rho(rho_emp, d)
 
 # Init
-nu_init = 10*np.ones(K)
+nu_init = 20*np.ones(K)
 theta_init = mc.rho_nu_to_theta(rho_init, nu_init, alphas)
-lbda_init = 2*np.ones(K_tot)
+lbda_init = 1.*np.ones(K_tot)
 print 'rho err init: ', np.sqrt(np.sum((rho_init - rho_0)**2))
 print 'nu err init: ', np.sqrt(np.sum((nu_init - nu_0)**2))
 print 'lbda err init: ', np.sqrt(np.sum((lbda_init - lbda_0)**2))
@@ -106,8 +106,9 @@ theta_constraint = mc.Theta_constraint(alphas, d)
 bds_r = [(0, 1./d) for i in range(len(theta_init[:-K]))]
 bds_n = [(0, None) for i in range(K)]
 bds = bds_r + bds_n
-n_loop = 3
+n_loop = 20
 
+t_0 = time.clock()
 # EM algorithm
 theta = np.copy(theta_init)
 gamma_z = np.copy(gamma_z_init)
@@ -118,7 +119,7 @@ theta_list = [theta]
 check_list = [(-Q_tot, cplt_lhood)]
 cpt = 0
 crit_diff = 2.
-while crit_diff > 0.1 and cpt < n_loop:
+while crit_diff > 1. and cpt < n_loop:
     # E-step
     gamma_z = em.compute_gamma_z(x_extr, theta, lbda,
                                  alphas, alphas_singlet,
@@ -150,8 +151,12 @@ while crit_diff > 0.1 and cpt < n_loop:
     cplt_lhood_ = em.complete_likelihood(x_extr, theta, lbda,
                                          alphas, alphas_singlet,
                                          noise_func)
-    # crit_diff = abs(Q_tot_ - Q_tot) + abs(cplt_lhood_ - cplt_lhood)
+    crit_diff = abs(Q_tot_ - Q_tot)
     Q_tot = Q_tot_
     cplt_lhood = cplt_lhood_
     check_list.append((-Q_tot, cplt_lhood))
     cpt += 1
+t_em = time.clock() - t_0
+np.save('results/theta_res.npy', theta)
+np.save('results/lbda_res.npy', lbda)
+np.save('results/gamma_z_res.npy', gamma_z)
