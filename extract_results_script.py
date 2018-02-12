@@ -6,7 +6,7 @@ import mom_constraint as mc
 
 d = 100
 K = 50
-sign_file = str(5781)
+sign_file = '9542'
 print np.load('results/parameters_' + sign_file + '.npy')
 n_loop = 5
 alphas = np.load('results/alphas_' + sign_file + '.npy')

@@ -22,9 +22,6 @@ d = 20
 n = int(1e2)
 K = 10
 R_dir = 1e2
-# sign_file = str()
-# 'results/alphas_' + sign_file + '.npy'
-# l = 0
 true_alphas = list(np.load('results/true_alphas.npy'))
 feats = list(set([j for alph in true_alphas for j in alph]))
 alphas_singlet = [[j] for j in list(set(range(d)) - set(feats))]
@@ -90,7 +87,7 @@ G_visu = nx.from_numpy_matrix(W_thresh)
 labels_dict = {i: str(y_label[i])
                for i in range(n_extr)}
 
-cmap = plt.get_cmap('cubehelix', K_spec)  # 'cubehelix'
+cmap = plt.get_cmap('cubehelix', K_spec)
 pos = nx.spring_layout(G_visu, k=0.1)
 nx.draw(G_visu,
         pos=pos,

@@ -146,6 +146,5 @@ while crit_diff > 1. and cpt < n_loop:
     print Q_tot, cplt_lhood
     check_list.append((-Q_tot, cplt_lhood))
     cpt += 1
-
 np.save('results/gamma_z_dmx' + str(k_0) + '_' + str(K_dmx) + '_' +
         str(k_1) + '.npy', gamma_z)

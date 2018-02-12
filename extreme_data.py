@@ -1,5 +1,6 @@
 import numpy as np
 import clef_algo as clf
+import itertools as it
 
 
 def extreme_points_bin(x_raw, k=None, R=None, eps=None, without_zeros=None):
@@ -24,16 +25,6 @@ def extreme_points_bin(x_raw, k=None, R=None, eps=None, without_zeros=None):
         x_bin = x_bin[np.sum(x_bin, axis=1) > 0]
 
     return x_bin
-
-
-def find_R(x_sim, eps):
-    R = 0
-    n_exrt = len(extreme_points_bin(x_sim, R)[0])
-    while n_exrt > eps*len(x_sim):
-        R += 1
-        n_exrt = len(extreme_points_bin(x_sim, R)[0])
-
-    return R
 
 
 def rank_transformation(x_raw):

@@ -115,15 +115,10 @@ for edge in G.edges():
         G_edges.append(edge)
         weights_edges.append(W_thresh[edge])
 G_visu = nx.from_numpy_matrix(W_thresh)
-# cmap = plt.get_cmap(name='gnuplot_r')
-# cmaplist = [cmap(i) for i in range(cmap.N)]
-# new_cmap = cmap.from_list('Custom cmap', cmaplist, cmap.N)
-# bounds = np.linspace(0, K_spec, K_spec+1)
-# norm = mlc.BoundaryNorm(bounds, cmap.N)
 labels_dict = {i: str(flights_ind[i])
                for i in range(n_extr)}
 
-cmap = plt.get_cmap('cubehelix', K_spec)  # 'cubehelix'
+cmap = plt.get_cmap('cubehelix', K_spec)
 pos = nx.spring_layout(G_visu, k=0.1)
 nx.draw(G_visu,
         pos=pos,
