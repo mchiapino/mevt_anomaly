@@ -97,3 +97,11 @@ def variance_eta_hill(x_bin_k, x_bin_kp, x_bin_km, alpha, k):
                                  sum(r_p[j]**2 for j in alpha))/rho_alpha
 
     return var
+
+
+def hill_test(x_rank, x_bin_k, x_bin_kp, x_bin_km, alpha, k, delta):
+    var = variance_eta_hill(x_bin_k, x_bin_kp, x_bin_km, alpha, k)
+    eta = eta_hill(x_rank, alpha, k)
+    test = eta - (1 - st.norm.ppf(1 - delta) * np.sqrt(var/float(k)))
+
+    return test, np.sqrt(var/float(k))

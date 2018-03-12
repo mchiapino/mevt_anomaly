@@ -91,6 +91,45 @@ def r(x_bin, alpha, k):
     return np.sum(np.sum(x_bin[:, alpha], axis=1) == len(alpha))/float(k)
 
 
+def init_freq(x_bin_k, k, f_min):
+    n_dim = np.shape(x_bin_k)[1]
+    alphas = []
+    for (i, j) in it.combinations(range(n_dim), 2):
+        alpha = [i, j]
+        r_alph = r(x_bin_k, alpha, k)
+        if r_alph > f_min:
+            alphas.append(alpha)
+
+    return alphas
+
+
+def find_alphas_freq(x_bin_k, k, f_min):
+    n, dim = np.shape(x_bin_k)
+    alphas_pairs = init_freq(x_bin_k, k, f_min)
+    s = 2
+    A = {}
+    A[s] = alphas_pairs
+    while len(A[s]) > s:
+        A[s + 1] = []
+        G = clf.make_graph(A[s], s, dim)
+        alphas_to_try = clf.find_alphas_to_try(A[s], G, s)
+        if len(alphas_to_try) > 0:
+            for alpha in alphas_to_try:
+                r_alph = r(x_bin_k, alpha, k)
+                if r_alph > f_min:
+                    A[s + 1].append(alpha)
+        s += 1
+
+    return A
+
+
+def freq_0(x_bin_k, k, f_min):
+    alphas_dict = find_alphas_freq(x_bin_k, k, f_min)
+    alphas = clf.find_maximal_alphas(alphas_dict)
+
+    return alphas
+
+
 def rhos_alpha_pairs(x_bin, alpha, k):
     """Computes rho(i,j) for each (i,j) in alpha.
 

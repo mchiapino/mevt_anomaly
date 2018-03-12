@@ -51,7 +51,7 @@ def alphas_init(binary_thresh, mu_0):
     return asymptotic_pair
 
 
-def kappa(binary_thresh, alpha):
+def kappa(x_bin, alpha):
     """
         Input:
             -binary_thresh = matrix(n x d), X_ij = 1 if x_extr_ij > R
@@ -60,14 +60,18 @@ def kappa(binary_thresh, alpha):
             -kappa = #{i | for all j in alpha, X_ij=1} /
                 #{i | at least |alpha|-1 j, X_ij=1}
     """
-    size_alpha = len(alpha)
-    alpha_vect_tmp = binary_thresh[:, alpha]
-    beta = float(np.sum(np.sum(alpha_vect_tmp, axis=1) >
-                        size_alpha - 2))
-    all_alpha = np.sum(np.prod(alpha_vect_tmp, axis=1))
-    kappa = all_alpha / beta
+    beta = compute_beta(x_bin, alpha)
+    all_alpha = np.sum(np.prod(x_bin[:, alpha], axis=1))
+    if beta == 0.:
+        kappa = 0.
+    else:
+        kappa = all_alpha / float(beta)
 
     return kappa
+
+
+def compute_beta(x_bin, alpha):
+    return np.sum(np.sum(x_bin[:, alpha], axis=1) > len(alpha)-2)
 
 
 def khi(binary_data, alpha):
