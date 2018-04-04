@@ -27,7 +27,7 @@ for j in range(d_0):
 # Rank transformation, for each margin (column) V_i = n/(rank(X_i) + 1)
 x_rank_0 = extr.rank_transformation(x_doubled)
 
-# kth extremer points
+# kth extremer points for the sum-norm
 k_0 = int(1e3)
 ind_extr_0 = np.argsort(np.sum(x_rank_0, axis=1))[::-1][:k_0]
 x_extr_0 = x_rank_0[ind_extr_0]
@@ -52,7 +52,7 @@ alphas_0 = alphas_dmx
 feats = list(set([j for alph in alphas_0 for j in alph]))
 d = len(feats)
 x_rank = x_rank_0[:, feats]
-k_1 = int(300)
+k_1 = int(500)
 ind_extr = np.argsort(np.sum(x_rank, axis=1))[::-1][:k_1]
 x_extr = x_rank[ind_extr]
 alphas = ga.alphas_conversion(alphas_0)
@@ -100,7 +100,7 @@ theta_constraint = mc.Theta_constraint(alphas, d)
 bds_r = [(0, 1./d) for i in range(len(theta_init[:-K]))]
 bds_n = [(0, 100) for i in range(K)]
 bds = bds_r + bds_n
-n_loop = 20
+n_loop = 10
 
 # EM algorithm
 gamma_z = np.copy(gamma_z_init)
@@ -143,7 +143,7 @@ while crit_diff > 1. and cpt < n_loop:
     crit_diff = abs(Q_tot_ - Q_tot)
     Q_tot = Q_tot_
     cplt_lhood = cplt_lhood_
-    print Q_tot, cplt_lhood
+    print -Q_tot, cplt_lhood
     check_list.append((-Q_tot, cplt_lhood))
     cpt += 1
 np.save('results/gamma_z_dmx' + str(k_0) + '_' + str(K_dmx) + '_' +

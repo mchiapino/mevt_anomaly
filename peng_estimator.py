@@ -126,4 +126,5 @@ def peng_test(x_bin_k, x_bin_2k, x_bin_kp, x_bin_km, alpha, k, delta):
     var = var_eta_peng(x_bin_k, x_bin_2k, x_bin_kp, x_bin_km, alpha, k)
     eta = eta_peng(x_bin_k, x_bin_2k, alpha, k)
 
-    return eta - (1 - st.norm.ppf(1 - delta) * np.sqrt(var/float(k)))
+    return (eta - (1 - st.norm.ppf(1 - delta) * np.sqrt(var/float(k))),
+            np.sqrt(var/float(k)))

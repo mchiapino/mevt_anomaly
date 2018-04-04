@@ -141,8 +141,9 @@ def all_sub_alphas(alphas):
 
 def dict_size(all_alphas):
     sizes = np.array(map(len, all_alphas))
+    size_set = set(sizes)
     dict_alphas = {k: np.array(all_alphas)[np.nonzero(sizes == k)]
-                   for k in range(2, max(sizes)+1)}
+                   for k in size_set}  # range(2, max(sizes)+1)
 
     return dict_alphas
 

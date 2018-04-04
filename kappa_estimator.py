@@ -118,4 +118,5 @@ def kappa_test(x_bin_k, x_bin_kp, x_bin_km, alpha, k, kappa_min, delta):
     var = var_kappa(x_bin_k, x_bin_kp, x_bin_km, alpha, k)
     kap = clf.kappa(x_bin_k, alpha)
 
-    return kap - (kappa_min + st.norm.ppf(delta) * np.sqrt(var/float(k)))
+    return (kap - (kappa_min + st.norm.ppf(delta) * np.sqrt(var/float(k))),
+            np.sqrt(var/float(k)))
