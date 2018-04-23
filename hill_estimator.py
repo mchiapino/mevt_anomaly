@@ -37,6 +37,9 @@ def alphas_init_hill(x_rank, x_bin_k, x_bin_kp, x_bin_km, delta, k):
         alpha = [i, j]
         eta = eta_hill(x_rank, alpha, k)
         var = variance_eta_hill(x_bin_k, x_bin_kp, x_bin_km, alpha, k)
+        if var < 0 or np.isnan(var):
+            print var
+            var = 0.
         test = 1 - st.norm.ppf(1 - delta) * np.sqrt(var/float(k))
         if eta > test:
             alphas.append(alpha)
@@ -60,6 +63,9 @@ def find_alphas_hill(x_rank, x_bin_k, x_bin_kp, x_bin_km, delta, k):
             for alpha in alphas_to_try:
                 eta = eta_hill(x_rank, alpha, k)
                 var = variance_eta_hill(x_bin_k, x_bin_kp, x_bin_km, alpha, k)
+                if var < 0 or np.isnan(var):
+                    print var
+                    var = 0.
                 test = 1 - st.norm.ppf(1 - delta) * np.sqrt(var/float(k))
                 if eta > test:
                     A[s + 1].append(alpha)
@@ -101,6 +107,8 @@ def variance_eta_hill(x_bin_k, x_bin_kp, x_bin_km, alpha, k):
 
 def hill_test(x_rank, x_bin_k, x_bin_kp, x_bin_km, alpha, k, delta):
     var = variance_eta_hill(x_bin_k, x_bin_kp, x_bin_km, alpha, k)
+    if var < 0 or np.isnan(var):
+        var = 0.
     eta = eta_hill(x_rank, alpha, k)
     test = eta - (1 - st.norm.ppf(1 - delta) * np.sqrt(var/float(k)))
 

@@ -11,55 +11,55 @@ import clef_algo as clf
 import em_algo as em
 
 
-# Airbus Data
-x = genfromtxt('Data_Anne.csv', delimiter=',')
-x = x[1:, 1:]
-n, d_0 = np.shape(x)
+# # Airbus Data
+# x = genfromtxt('Data_Anne.csv', delimiter=',')
+# x = x[1:, 1:]
+# n, d_0 = np.shape(x)
 
-# Each feature is doubled, separating points above and below the mean
-mean = np.mean(x, axis=0)
-var = x - mean
-x_doubled = np.zeros((n, 2*d_0))
-for j in range(d_0):
-    x_doubled[var[:, j] > 0, j] = var[var[:, j] > 0, j]
-    x_doubled[var[:, j] < 0, d_0 + j] = - var[var[:, j] < 0, j]
+# # Each feature is doubled, separating points above and below the mean
+# mean = np.mean(x, axis=0)
+# var = x - mean
+# x_doubled = np.zeros((n, 2*d_0))
+# for j in range(d_0):
+#     x_doubled[var[:, j] > 0, j] = var[var[:, j] > 0, j]
+#     x_doubled[var[:, j] < 0, d_0 + j] = - var[var[:, j] < 0, j]
 
-# Rank transformation, for each margin (column) V_i = n/(rank(X_i) + 1)
-x_rank_0 = extr.rank_transformation(x_doubled)
+# # Rank transformation, for each margin (column) V_i = n/(rank(X_i) + 1)
+# x_rank_0 = extr.rank_transformation(x_doubled)
 
-# kth extremer points for the sum-norm
-k_0 = int(1e3)
-ind_extr_0 = np.argsort(np.sum(x_rank_0, axis=1))[::-1][:k_0]
-x_extr_0 = x_rank_0[ind_extr_0]
+# # kth extremer points for the sum-norm
+# k_0 = int(1e3)
+# ind_extr_0 = np.argsort(np.sum(x_rank_0, axis=1))[::-1][:k_0]
+# x_extr_0 = x_rank_0[ind_extr_0]
 
-# Sparse support
-R_spars = np.min(np.max(x_extr_0, axis=1)) - 1
-# Damex
-eps_dmx = 0.5
-alphas_0, mass = dmx.damex(x_extr_0, R_spars, eps_dmx)
-K_dmx = np.sum(mass > 3)
-alphas_dmx = clf.find_maximal_alphas(dmx.list_to_dict_size(alphas_0[:K_dmx]))
-print [np.sum(np.sum(x_extr_0[:, alpha] > R_spars, axis=1) == len(alpha))
-       for alpha in alphas_dmx]
-# # Clef
-# kappa_min = 0.3
-# alphas_clf = clf.clef(x_extr_0, R_spars, kappa_min)
+# # Sparse support
+# R_spars = np.min(np.max(x_extr_0, axis=1)) - 1
+# # Damex
+# eps_dmx = 0.5
+# alphas_0, mass = dmx.damex(x_extr_0, R_spars, eps_dmx)
+# K_dmx = np.sum(mass > 3)
+# alphas_dmx = clf.find_maximal_alphas(dmx.list_to_dict_size(alphas_0[:K_dmx]))
 # print [np.sum(np.sum(x_extr_0[:, alpha] > R_spars, axis=1) == len(alpha))
-#        for alpha in alphas_clf]
+#        for alpha in alphas_dmx]
+# # # Clef
+# # kappa_min = 0.3
+# # alphas_clf = clf.clef(x_extr_0, R_spars, kappa_min)
+# # print [np.sum(np.sum(x_extr_0[:, alpha] > R_spars, axis=1) == len(alpha))
+# #        for alpha in alphas_clf]
 
-# Extreme points; Only keeps features that appear in the alphas
-alphas_0 = alphas_dmx
-feats = list(set([j for alph in alphas_0 for j in alph]))
-d = len(feats)
-x_rank = x_rank_0[:, feats]
-k_1 = int(500)
-ind_extr = np.argsort(np.sum(x_rank, axis=1))[::-1][:k_1]
-x_extr = x_rank[ind_extr]
-alphas = ga.alphas_conversion(alphas_0)
-mat_alphas = ga.alphas_matrix(alphas)
-alphas_singlet = []
-K = len(alphas)
-K_tot = K + len(alphas_singlet)
+# # Extreme points; Only keeps features that appear in the alphas
+# alphas_0 = alphas_dmx
+# feats = list(set([j for alph in alphas_0 for j in alph]))
+# d = len(feats)
+# x_rank = x_rank_0[:, feats]
+# k_1 = int(500)
+# ind_extr = np.argsort(np.sum(x_rank, axis=1))[::-1][:k_1]
+# x_extr = x_rank[ind_extr]
+# alphas = ga.alphas_conversion(alphas_0)
+# mat_alphas = ga.alphas_matrix(alphas)
+# alphas_singlet = []
+# K = len(alphas)
+# K_tot = K + len(alphas_singlet)
 
 # # Extreme points with singlets
 # alphas = alphas_clf
@@ -68,6 +68,13 @@ K_tot = K + len(alphas_singlet)
 # feats = list(set([j for alph in alphas for j in alph]))
 # alphas_singlet = [[j] for j in list(set(range(2*d_0)) - set(feats))]
 # K_tot = K + len(alphas_singlet)
+
+x_extr = np.load('results/extr_data.npy')
+n_extr, d = x_extr.shape
+alphas = np.load('results/alphas_clf_3.npy')
+K = len(alphas)
+K_tot = K
+alphas_singlet = []
 
 # Empirical rho
 means_emp = [np.mean(em.project_on_simplex(x_extr, alpha), axis=0)
@@ -146,5 +153,4 @@ while crit_diff > 1. and cpt < n_loop:
     print -Q_tot, cplt_lhood
     check_list.append((-Q_tot, cplt_lhood))
     cpt += 1
-np.save('results/gamma_z_dmx' + str(k_0) + '_' + str(K_dmx) + '_' +
-        str(k_1) + '.npy', gamma_z)
+np.save('results/gamma_z_clf', gamma_z)
