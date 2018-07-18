@@ -1,3 +1,6 @@
+.ipynb*
+*.ipynb
+*#
 *~
 *.pyc
 *.p
@@ -7,3 +10,5 @@ trash.py
 figures/
 *.eps
 *.pdf
+data/
+scripts/

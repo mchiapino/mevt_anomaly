@@ -83,7 +83,7 @@ def reconstruct_alphas(alphas, feats, d_0):
 # K_tot = K + len(alphas_singlet)
 
 # Adjacency Matrix
-gamma_z = np.load('results/gamma_z_clf.npy')
+gamma_z = np.load('results/gamma_z_dmx.npy')
 n_extr, K_tot = gamma_z.shape
 gamma_z = gamma_z[np.max(gamma_z, axis=1) > 1./K_tot + 1e-8]
 n_extr, K = np.shape(gamma_z)
@@ -104,13 +104,16 @@ L = np.diag(np.sum(W, axis=1)) - W
 eigval, eigvect = np.linalg.eigh(L)
 kmeans = KMeans(n_clusters=K_spec).fit(eigvect[:, :K_spec])
 labels = kmeans.labels_
-flights_ind = np.load('results/ind_extr.npy')  # np.nonzero(ind_extr)[0]
+ind_extr = np.load('results/ind_extr.npy')
+flights_ind = np.nonzero(ind_extr)[0]
 
 # Final clusters
-flights_clusters = [[flights_ind[j] for j in np.nonzero(labels == l)[0]]
-                    for l in range(K_spec)]
-alphas = np.load('results/alphas_clf_3.npy')
+# flights_clusters = [[flights_ind[j] for j in np.nonzero(labels == l)[0]]
+#                     for l in range(K_spec)]
+alphas = np.load('results/alphas.npy')
 x_extr = np.load('results/extr_data.npy')
+y_extr = np.load('results/extr_lab.npy')
+K_lab = len(set(y_extr))
 n_extr, d = x_extr.shape
 feats = [j for alpha in alphas for j in alpha]
 flights_parameters_clusters = reconstruct_alphas(alphas, feats, d)
@@ -126,16 +129,16 @@ for edge in G.edges():
         G_edges.append(edge)
         weights_edges.append(W_thresh[edge])
 G_visu = nx.from_numpy_matrix(W_thresh)
-labels_dict = {i: str(flights_ind[i])
+labels_dict = {i: str(y_extr[i])
                for i in range(n_extr)}
 
-cmap = plt.get_cmap('cubehelix', K_spec)
+cmap = plt.get_cmap('cubehelix', K_lab)
 pos = nx.spring_layout(G_visu, k=0.05)
 nx.draw(G_visu,
         pos=pos,
         edgelist=G_edges,
         node_size=1e3,
-        node_color=(K_spec - np.array(labels))/float(K_spec),
+        node_color=(K_lab - np.array(y_extr))/float(K_lab),
         alpha=0.5,
         cmap=cmap,
         edge_color=np.array(weights_edges),

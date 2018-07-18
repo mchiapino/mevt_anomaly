@@ -11,6 +11,40 @@ import extreme_data as extr
 #############
 
 
+def clef_init_hill(x_rank, k, eta_min):
+    n, d = x_rank.shape
+    alphas = []
+    for (i, j) in it.combinations(range(d), 2):
+        alpha = [i, j]
+        eta = eta_hill(x_rank, alpha, k)
+        if eta > eta_min:
+            alphas.append(alpha)
+
+    return alphas
+
+
+def clef_hill(x_rank, k, eta_min):
+    n, d = np.shape(x_rank)
+    alphas_pairs = clef_init_hill(x_rank, k, eta_min)
+    s = 2
+    A = {}
+    A[s] = alphas_pairs
+    while len(A[s]) > s:
+        print s
+        A[s + 1] = []
+        G = clf.make_graph(A[s], s, d)
+        alphas_to_try = clf.find_alphas_to_try(A[s], G, s)
+        if len(alphas_to_try) > 0:
+            for alpha in alphas_to_try:
+                eta = eta_hill(x_rank, alpha, k)
+                if eta > eta_min:
+                    A[s + 1].append(alpha)
+        s += 1
+    alphas = clf.find_maximal_alphas(A)
+
+    return alphas
+
+
 def hill(x_rank, delta, k):
     x_bin_k = extr.extreme_points_bin(x_rank, k=k)
     x_bin_kp = extr.extreme_points_bin(x_rank, k=k + int(k**(3./4)))
