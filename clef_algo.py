@@ -167,15 +167,16 @@ def find_maximal_alphas(A, lst=True):
     """
     k = len(A.keys()) + 1
     maximal_alphas = [A[k]]
-    alphas_used = map(set, A[k])
-    for i in xrange(1, k - 1):
-        alpha_tmp = map(set, A[k - i])
+    alphas_used = list(map(set, A[k]))
+    for i in range(1, k - 1):
+        alpha_tmp = list(map(set, A[k - i]))
         for alpha in A[k - i]:
             for alpha_test in alphas_used:
                 if len(set(alpha) & alpha_test) == k - i:
                     alpha_tmp.remove(set(alpha))
                     break
-        maximal_alphas.append(map(list, alpha_tmp))
+        maximal_alphas.append(list(map(list, alpha_tmp)))
+        # print(alphas_used, alpha_tmp)
         alphas_used = alphas_used + alpha_tmp
     maximal_alphas = maximal_alphas[::-1]
     if lst:

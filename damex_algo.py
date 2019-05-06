@@ -17,16 +17,16 @@ def damex_0(x_bin):
         n_shared_feats.T == n_extr_feats).T
     feat_non_covered = set(range(n_sample))
     samples_nb = {}
-    for i in xrange(n_sample):
+    for i in range(n_sample):
         feats = list(np.nonzero(exact_extr_feats[i, :])[0])
         if i in feat_non_covered:
             feat_non_covered -= set(feats)
-            if n_extr_feats[i] > 0:
+            if n_extr_feats[i] > 1:
                 samples_nb[i] = len(feats)
-    ind_sort = np.argsort(samples_nb.values())[::-1]
-    alphas = [list(np.nonzero(x_bin[samples_nb.keys()[i], :])[0])
+    ind_sort = np.argsort(list(samples_nb.values()))[::-1]
+    alphas = [list(np.nonzero(x_bin[list(samples_nb.keys())[i], :])[0])
               for i in ind_sort]
-    mass = [samples_nb.values()[i] for i in ind_sort]
+    mass = [list(samples_nb.values())[i] for i in ind_sort]
 
     return alphas, np.array(mass)
 

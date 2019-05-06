@@ -38,7 +38,7 @@ def compute_gamma_z(x_extr, theta, lbda, alphas, alphas_singlet, noise_func):
             gamma_z[i] /= np.sum(gamma_z[i])
         elif np.isnan(np.sum(gamma_z[i])) or np.sum(gamma_z[i]) == 0:
             if np.sum(np.isnan(gamma_z[i])) > 0:
-                print 'error gamma', i
+                print('error gamma', i)
             gamma_z[i] = 1./(K + K_s)
         gamma_z[i] /= np.sum(gamma_z[i])
 

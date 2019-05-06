@@ -15,7 +15,7 @@ def extreme_points_bin(x_raw, k=None, R=None, eps=None, without_zeros=None):
     if k:
         mat_rank = np.argsort(x_raw, axis=0)[::-1]
         x_bin = np.zeros((n_sample, n_dim))
-        for j in xrange(n_dim):
+        for j in range(n_dim):
             x_bin[mat_rank[:k, j], j] = 1
     if R and not eps:
         x_bin = 1.*(x_raw > R)
@@ -31,7 +31,7 @@ def rank_transformation(x_raw):
     n_sample, n_dim = np.shape(x_raw)
     mat_rank = np.argsort(x_raw, axis=0)[::-1]
     x_rank = np.zeros((n_sample, n_dim))
-    for i in xrange(n_dim):
+    for i in range(n_dim):
         x_rank[mat_rank[:, i], i] = np.arange(n_sample) + 1
     x_pareto = n_sample/x_rank
 

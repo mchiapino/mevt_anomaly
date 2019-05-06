@@ -107,7 +107,7 @@ theta_constraint = mc.Theta_constraint(alphas, d)
 bds_r = [(0, 1./d) for i in range(len(theta_init[:-K]))]
 bds_n = [(0, 100) for i in range(K)]
 bds = bds_r + bds_n
-n_loop = 10
+n_loop = 1
 
 # EM algorithm
 gamma_z = np.copy(gamma_z_init)
