@@ -1,6 +1,6 @@
 ## Détection des sous-groupes de variables dépendantes dans les extrêmes
 et estimation du mélange de Dirichlets.
--> flight_data_EM_script.py
+-> EM_flights.ipynb
 
 -Les sous-groupes de features sont détectés par DAMEX ou par CLEF.
 La variable R représente le seuil au dessus duquel on estime qu'un point est 'extreme'.
@@ -14,7 +14,7 @@ que le point i appartiennent au sous-groupe k.
 
 
 ## Clustering spectral et visualisation du graphe.
--> visualisation.py
+-> visualize_flights.ipynb
 
 -A partir de gamma_z nous pouvont construire la matrice d'adjacence W pour faire du
 clustering sur les points (les vols 'extreme'), avec un algorithme de clustering spectral.
