@@ -14,7 +14,7 @@ que le point i appartiennent au sous-groupe k.
 
 
 ## Clustering spectral et visualisation du graphe.
--> visualize_flights.ipynb
+-> generate_extrem_dirichlet.ipynb
 
 -A partir de gamma_z nous pouvont construire la matrice d'adjacence W pour faire du
 clustering sur les points (les vols 'extreme'), avec un algorithme de clustering spectral.
